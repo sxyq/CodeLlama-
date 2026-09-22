@@ -1,0 +1,210 @@
+{
+  "experiment_id": "DEFAULT-LORA-001",
+  "yaml_path": "/home/syy/codellama-lora/configs/training/default_baseline_lora.yaml",
+  "yaml_static_ok": true,
+  "yaml_checks": [
+    {
+      "key": "model_name_or_path",
+      "expected": "/data/vllm/CodeLlama-13b-Instruct-hf",
+      "got": "/data/vllm/CodeLlama-13b-Instruct-hf",
+      "ok": true
+    },
+    {
+      "key": "disable_gradient_checkpointing",
+      "expected": false,
+      "got": false,
+      "ok": true
+    },
+    {
+      "key": "stage",
+      "expected": "sft",
+      "got": "sft",
+      "ok": true
+    },
+    {
+      "key": "do_train",
+      "expected": true,
+      "got": true,
+      "ok": true
+    },
+    {
+      "key": "finetuning_type",
+      "expected": "lora",
+      "got": "lora",
+      "ok": true
+    },
+    {
+      "key": "template",
+      "expected": "llama2",
+      "got": "llama2",
+      "ok": true
+    },
+    {
+      "key": "dataset",
+      "expected": "codellama_asm_pseudo_to_cpp",
+      "got": "codellama_asm_pseudo_to_cpp",
+      "ok": true
+    },
+    {
+      "key": "cutoff_len",
+      "expected": 2048,
+      "got": 2048,
+      "ok": true
+    },
+    {
+      "key": "packing",
+      "expected": false,
+      "got": false,
+      "ok": true
+    },
+    {
+      "key": "train_on_prompt",
+      "expected": false,
+      "got": false,
+      "ok": true
+    },
+    {
+      "key": "learning_rate",
+      "expected": 5e-05,
+      "got": 5e-05,
+      "ok": true
+    },
+    {
+      "key": "num_train_epochs",
+      "expected": 3.0,
+      "got": 3.0,
+      "ok": true
+    },
+    {
+      "key": "per_device_train_batch_size",
+      "expected": 2,
+      "got": 2,
+      "ok": true
+    },
+    {
+      "key": "gradient_accumulation_steps",
+      "expected": 8,
+      "got": 8,
+      "ok": true
+    },
+    {
+      "key": "lr_scheduler_type",
+      "expected": "cosine",
+      "got": "cosine",
+      "ok": true
+    },
+    {
+      "key": "lora_rank",
+      "expected": 8,
+      "got": 8,
+      "ok": true
+    },
+    {
+      "key": "lora_alpha",
+      "expected": 16,
+      "got": 16,
+      "ok": true
+    },
+    {
+      "key": "lora_dropout",
+      "expected": 0,
+      "got": 0,
+      "ok": true
+    },
+    {
+      "key": "lora_target",
+      "expected": "all",
+      "got": "all",
+      "ok": true
+    },
+    {
+      "key": "bf16",
+      "expected": true,
+      "got": true,
+      "ok": true
+    },
+    {
+      "key": "val_size",
+      "expected": 0,
+      "got": 0,
+      "ok": true
+    },
+    {
+      "key": "seed",
+      "expected": 42,
+      "got": 42,
+      "ok": true
+    }
+  ],
+  "dataset": {
+    "name": "codellama_asm_pseudo_to_cpp",
+    "registration": "/home/syy/codellama-lora/configs/datasets/dataset_info.json",
+    "file": "/home/syy/codellama-lora/configs/datasets/Fine-Tuning.json",
+    "sha256_original": "28bab944c2db29d492fb362f9e728ac8f2d4d24deb1737af80049df7e3a1c7b6",
+    "sha256_symlink_target": "28bab944c2db29d492fb362f9e728ac8f2d4d24deb1737af80049df7e3a1c7b6",
+    "sha256_match": true,
+    "samples_loaded": 1455,
+    "aligned_samples": 1455,
+    "validation_samples": 0,
+    "test_samples": 0,
+    "keys": [
+      "_prompt",
+      "_response",
+      "_system",
+      "_tools",
+      "_images",
+      "_videos",
+      "_audios"
+    ],
+    "prompt0_roles": [
+      "user"
+    ],
+    "response0_roles": [
+      "assistant"
+    ]
+  },
+  "template": "llama2",
+  "cutoff_len": 2048,
+  "packing": false,
+  "train_on_prompt": false,
+  "raw_tokens": {
+    "input_tokens": 1444375,
+    "output_tokens": 262395,
+    "total_tokens": 1706770
+  },
+  "train_tokens_per_epoch_after_cutoff": {
+    "train_input_context_tokens_per_epoch": 1411053,
+    "train_output_response_tokens_per_epoch": 263850,
+    "train_total_tokens_per_epoch": 1674903,
+    "loss_bearing_tokens_per_epoch": 263850,
+    "truncated_samples": 118,
+    "truncation_rate": 0.08109965635738832
+  },
+  "train_token_presentations_3e": {
+    "train_input_context_tokens_total_3e": 4233159,
+    "train_output_response_tokens_total_3e": 791550,
+    "train_total_token_presentations_3e": 5024709,
+    "loss_bearing_token_presentations_3e": 791550
+  },
+  "batch_steps": {
+    "micro_batch_size": 2,
+    "gradient_accumulation_steps": 8,
+    "effective_batch_size": 16,
+    "micro_steps_per_epoch": 728,
+    "optimizer_steps_per_epoch": 91,
+    "total_optimizer_steps_3e": 273,
+    "last_micro_batch_size": 1,
+    "dataloader_drop_last": false,
+    "method": "micro_steps_per_epoch = ceil(samples / micro_bs) with dataloader_drop_last=false; optimizer_steps_per_epoch = ceil(micro_steps / grad_accum) because HF Trainer flushes the final incomplete accumulation group at epoch end; last incomplete micro-batch is kept."
+  },
+  "sanity_checks": {
+    "samples_1455": true,
+    "train_total_eq_in_plus_out": true,
+    "loss_eq_response_when_not_train_on_prompt": true,
+    "raw_total_eq": true,
+    "sha_match": true,
+    "yaml_ok": true,
+    "aligned_eq_loaded": true
+  },
+  "static_validation": "PASS"
+}

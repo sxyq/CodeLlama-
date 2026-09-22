@@ -1,0 +1,663 @@
+{
+  "task_id": "TOKEN-AUDIT-001",
+  "timestamp": "2026-09-22T18:18:31.040237+08:00",
+  "dataset": {
+    "path": "/home/syy/codellama-lora/data/Fine-Tuning.json",
+    "sha256": "28bab944c2db29d492fb362f9e728ac8f2d4d24deb1737af80049df7e3a1c7b6",
+    "sha256_expected": "28bab944c2db29d492fb362f9e728ac8f2d4d24deb1737af80049df7e3a1c7b6",
+    "sha256_match": true,
+    "samples": 1455,
+    "conversations_ok": 1455,
+    "human_count": 1455,
+    "gpt_count": 1455,
+    "empty_human": 0,
+    "empty_gpt": 0,
+    "malformed": 0,
+    "unique_inputs": 1406,
+    "unique_outputs": 51,
+    "duplicate_pairs": 49,
+    "target_groups": 51
+  },
+  "tokenizer": {
+    "path": "/data/vllm/CodeLlama-13b-Instruct-hf",
+    "class": "CodeLlamaTokenizer",
+    "vocab_size": 32016,
+    "len": 32017,
+    "bos_token": "<s>",
+    "bos_token_id": 1,
+    "eos_token": "</s>",
+    "eos_token_id": 2,
+    "pad_token": "</s>",
+    "pad_token_id": 2,
+    "unk_token": "<unk>",
+    "unk_token_id": 0,
+    "model_max_length": 1000000000000000019884624838656,
+    "padding_side": "left",
+    "truncation_side": "right",
+    "add_bos_token": true,
+    "add_eos_token": false,
+    "chat_template_present": true
+  },
+  "template": {
+    "name": "llama2",
+    "source": "src/llamafactory/data/template.py",
+    "class": "Llama2Template",
+    "efficient_eos": false,
+    "train_on_prompt": false,
+    "notes": "No dedicated codellama template; llama2 matches tokenizer.chat_template [INST] format."
+  },
+  "raw_tokens": {
+    "input_total": 1444375,
+    "output_total": 262395,
+    "total": 1706770,
+    "input_distribution": {
+      "count": 1455,
+      "min": 87,
+      "max": 3075,
+      "mean": 992.6975945017182,
+      "median": 915.0,
+      "p25": 682.5,
+      "p50": 915.0,
+      "p75": 1254.0,
+      "p90": 1669.0,
+      "p95": 1941.0,
+      "p99": 2657.520000000006,
+      "ge_512": 1204,
+      "ge_1024": 605,
+      "ge_2048": 55,
+      "ge_4096": 0,
+      "ge_8192": 0,
+      "ge_16384": 0
+    },
+    "output_distribution": {
+      "count": 1455,
+      "min": 11,
+      "max": 801,
+      "mean": 180.340206185567,
+      "median": 154.0,
+      "p25": 123.0,
+      "p50": 154.0,
+      "p75": 231.0,
+      "p90": 300.0,
+      "p95": 300.0,
+      "p99": 625.0,
+      "ge_512": 31,
+      "ge_1024": 0,
+      "ge_2048": 0,
+      "ge_4096": 0,
+      "ge_8192": 0,
+      "ge_16384": 0
+    },
+    "total_distribution": {
+      "count": 1455,
+      "min": 98,
+      "max": 3680,
+      "mean": 1173.0378006872852,
+      "median": 1103.0,
+      "p25": 816.5,
+      "p50": 1103.0,
+      "p75": 1507.0,
+      "p90": 1963.0,
+      "p95": 2181.499999999999,
+      "p99": 2977.2800000000025,
+      "ge_512": 1254,
+      "ge_1024": 838,
+      "ge_2048": 117,
+      "ge_4096": 0,
+      "ge_8192": 0,
+      "ge_16384": 0
+    }
+  },
+  "effective_tokens": {
+    "prompt_total": 1456015,
+    "response_total": 263850,
+    "total": 1719865,
+    "loss_bearing_total": 263850,
+    "ignored_total": 1456015,
+    "prompt_distribution": {
+      "count": 1455,
+      "min": 95,
+      "max": 3083,
+      "mean": 1000.6975945017182,
+      "median": 923.0,
+      "p25": 690.5,
+      "p50": 923.0,
+      "p75": 1262.0,
+      "p90": 1677.0,
+      "p95": 1949.0,
+      "p99": 2665.520000000006
+    },
+    "response_distribution": {
+      "count": 1455,
+      "min": 12,
+      "max": 802,
+      "mean": 181.340206185567,
+      "median": 155.0,
+      "p25": 124.0,
+      "p50": 155.0,
+      "p75": 232.0,
+      "p90": 301.0,
+      "p95": 301.0,
+      "p99": 626.0
+    },
+    "total_distribution": {
+      "count": 1455,
+      "min": 107,
+      "max": 3689,
+      "mean": 1182.0378006872852,
+      "median": 1112.0,
+      "p25": 825.5,
+      "p50": 1112.0,
+      "p75": 1516.0,
+      "p90": 1972.0,
+      "p95": 2190.499999999999,
+      "p99": 2986.2800000000025
+    }
+  },
+  "cutoff_stats": {
+    "512": {
+      "total_samples": 1455,
+      "no_truncation_samples": 196,
+      "truncated_samples": 1259,
+      "truncation_rate": 0.8652920962199313,
+      "total_tokens_before_truncation": 1719865,
+      "total_tokens_after_truncation": 709547,
+      "tokens_removed": 1010318,
+      "removed_token_percentage": 0.587440293278833,
+      "prompt_tokens_removed": 952841,
+      "response_tokens_removed": 57477,
+      "response_truncated_samples": 234
+    },
+    "1024": {
+      "total_samples": 1455,
+      "no_truncation_samples": 601,
+      "truncated_samples": 854,
+      "truncation_rate": 0.5869415807560138,
+      "total_tokens_before_truncation": 1719865,
+      "total_tokens_after_truncation": 1274659,
+      "tokens_removed": 445206,
+      "removed_token_percentage": 0.25886101525410427,
+      "prompt_tokens_removed": 436287,
+      "response_tokens_removed": 8919,
+      "response_truncated_samples": 31
+    },
+    "2048": {
+      "total_samples": 1455,
+      "no_truncation_samples": 1337,
+      "truncated_samples": 118,
+      "truncation_rate": 0.08109965635738832,
+      "total_tokens_before_truncation": 1719865,
+      "total_tokens_after_truncation": 1674903,
+      "tokens_removed": 44962,
+      "removed_token_percentage": 0.026142749576274882,
+      "prompt_tokens_removed": 44962,
+      "response_tokens_removed": 0,
+      "response_truncated_samples": 0
+    },
+    "4096": {
+      "total_samples": 1455,
+      "no_truncation_samples": 1455,
+      "truncated_samples": 0,
+      "truncation_rate": 0.0,
+      "total_tokens_before_truncation": 1719865,
+      "total_tokens_after_truncation": 1719865,
+      "tokens_removed": 0,
+      "removed_token_percentage": 0.0,
+      "prompt_tokens_removed": 0,
+      "response_tokens_removed": 0,
+      "response_truncated_samples": 0
+    },
+    "8192": {
+      "total_samples": 1455,
+      "no_truncation_samples": 1455,
+      "truncated_samples": 0,
+      "truncation_rate": 0.0,
+      "total_tokens_before_truncation": 1719865,
+      "total_tokens_after_truncation": 1719865,
+      "tokens_removed": 0,
+      "removed_token_percentage": 0.0,
+      "prompt_tokens_removed": 0,
+      "response_tokens_removed": 0,
+      "response_truncated_samples": 0
+    },
+    "16384": {
+      "total_samples": 1455,
+      "no_truncation_samples": 1455,
+      "truncated_samples": 0,
+      "truncation_rate": 0.0,
+      "total_tokens_before_truncation": 1719865,
+      "total_tokens_after_truncation": 1719865,
+      "tokens_removed": 0,
+      "removed_token_percentage": 0.0,
+      "prompt_tokens_removed": 0,
+      "response_tokens_removed": 0,
+      "response_truncated_samples": 0
+    }
+  },
+  "target_group_analysis": {
+    "target_group_count": 51,
+    "group_size_distribution": {
+      "count": 51,
+      "min": 1,
+      "max": 124,
+      "mean": 28.529411764705884,
+      "median": 30.0,
+      "p25": 17.5,
+      "p50": 30.0,
+      "p75": 38.0,
+      "p90": 44.0,
+      "p95": 47.0,
+      "p99": 88.5
+    },
+    "multi_sample_groups": 49,
+    "samples_in_multi_sample_groups": 1453,
+    "unique_function_names": 17,
+    "unknown_function_name_groups": 34,
+    "top20_largest_target_groups": [
+      {
+        "group_id": "61b82e1e63a7bf07b1d6452386652340bab839cb5dc6cf95be8081f5ca1fbf58",
+        "sample_count": 124,
+        "function_name": "UNKNOWN",
+        "sample_indexes_preview": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      {
+        "group_id": "25b6f5a86b77a05498eaa02641b7e6f3229815c82b5d0e1bc9a1c93461b38b7d",
+        "sample_count": 53,
+        "function_name": "UNKNOWN",
+        "sample_indexes_preview": [
+          71,
+          72,
+          73,
+          74,
+          75
+        ]
+      },
+      {
+        "group_id": "2ed1db6adb7ff53d2d92184bad8ec1fa7eff0fa1f9a67243fd6bbf3db52b420c",
+        "sample_count": 49,
+        "function_name": "gh_heap_remove",
+        "sample_indexes_preview": [
+          508,
+          509,
+          510,
+          511,
+          512
+        ]
+      },
+      {
+        "group_id": "be34db7357af2888b616190f4c7321cf229d17851482ef248043b2632a00348d",
+        "sample_count": 45,
+        "function_name": "delegation",
+        "sample_indexes_preview": [
+          870,
+          871,
+          872,
+          873,
+          874
+        ]
+      },
+      {
+        "group_id": "2ba22bea7b681c3ebc6d8141096693c65582186afa2e2e9487daf6ce0670952e",
+        "sample_count": 44,
+        "function_name": "check_protocol",
+        "sample_indexes_preview": [
+          959,
+          960,
+          961,
+          962,
+          963
+        ]
+      },
+      {
+        "group_id": "8f693cfb5a5b7326ac905f238c6104f7b93519e381a5c9e6cfad356b917eb39e",
+        "sample_count": 44,
+        "function_name": "ftpfilemethod",
+        "sample_indexes_preview": [
+          915,
+          916,
+          917,
+          918,
+          919
+        ]
+      },
+      {
+        "group_id": "49fe8d05ce28078e8defd2db7a72b6215830a6d4951aba43fbac90123847251e",
+        "sample_count": 42,
+        "function_name": "UNKNOWN",
+        "sample_indexes_preview": [
+          1206,
+          1207,
+          1208,
+          1209,
+          1210
+        ]
+      },
+      {
+        "group_id": "7f6f97c5a989c23d2a39acf0a9d1abc1aef5f6035806d98f440273774a0efb5f",
+        "sample_count": 42,
+        "function_name": "ftpcccmethod",
+        "sample_indexes_preview": [
+          828,
+          829,
+          830,
+          831,
+          832
+        ]
+      },
+      {
+        "group_id": "2552add26af313f0074bd279aa91eef5fda183d430302ca7b8d1b54c64a10e6e",
+        "sample_count": 40,
+        "function_name": "Curl_multi_max_total_connections",
+        "sample_indexes_preview": [
+          1106,
+          1107,
+          1108,
+          1109,
+          1110
+        ]
+      },
+      {
+        "group_id": "46e12dac25fdd18dd2afa919e5976db3499c7221510821591c3619cc451f8274",
+        "sample_count": 40,
+        "function_name": "UNKNOWN",
+        "sample_indexes_preview": [
+          595,
+          596,
+          597,
+          598,
+          599
+        ]
+      },
+      {
+        "group_id": "a15b2bb584aaa51084f935a7e9f682a0103eac7d9fd5a7be539e7082a80119ee",
+        "sample_count": 40,
+        "function_name": "UNKNOWN",
+        "sample_indexes_preview": [
+          97,
+          98,
+          99,
+          100,
+          101
+        ]
+      },
+      {
+        "group_id": "a8dda86bea1e5e610ea10721ccc51616f295dabed9808bbeb67f486a26ca697e",
+        "sample_count": 39,
+        "function_name": "UNKNOWN",
+        "sample_indexes_preview": [
+          1248,
+          1249,
+          1250,
+          1251,
+          1252
+        ]
+      },
+      {
+        "group_id": "7761640fd4b6c9bc6d0182fc630beaf48901f0f511b1c12d08910260593b09cc",
+        "sample_count": 38,
+        "function_name": "UNKNOWN",
+        "sample_indexes_preview": [
+          1146,
+          1147,
+          1148,
+          1149,
+          1150
+        ]
+      },
+      {
+        "group_id": "c373ba0042cc3bb6f62404fc1d111e0b591ec0026280affacd520f094d09c562",
+        "sample_count": 38,
+        "function_name": "UNKNOWN",
+        "sample_indexes_preview": [
+          247,
+          248,
+          249,
+          250,
+          251
+        ]
+      },
+      {
+        "group_id": "f86ad308a9871e1ebc1bd0f2f93d41bd02b915e3839f2432c55c15cc1af5eb86",
+        "sample_count": 38,
+        "function_name": "UNKNOWN",
+        "sample_indexes_preview": [
+          285,
+          286,
+          287,
+          288,
+          289
+        ]
+      },
+      {
+        "group_id": "07ec6b9fa10237768f73163db36646ed40ddb5979f07c8be74e93efd2b150e7e",
+        "sample_count": 37,
+        "function_name": "Curl_multi_max_host_connections",
+        "sample_indexes_preview": [
+          1069,
+          1070,
+          1071,
+          1072,
+          1073
+        ]
+      },
+      {
+        "group_id": "499d3571635139b7c92469094cdfb0743868359d973f552b425dfda4eb74d5d8",
+        "sample_count": 36,
+        "function_name": "UNKNOWN",
+        "sample_indexes_preview": [
+          1003,
+          1004,
+          1005,
+          1006,
+          1007
+        ]
+      },
+      {
+        "group_id": "ca3983d5acb1f87264df40bf081ef97ed4f915f3ad84fda7f4f7d5046e4dddf1",
+        "sample_count": 36,
+        "function_name": "UNKNOWN",
+        "sample_indexes_preview": [
+          138,
+          139,
+          140,
+          141,
+          142
+        ]
+      },
+      {
+        "group_id": "d183e189a3de4d54627b243cf2d56ba358a77230d928cd3316cebcaa1f549993",
+        "sample_count": 36,
+        "function_name": "UNKNOWN",
+        "sample_indexes_preview": [
+          1287,
+          1288,
+          1289,
+          1290,
+          1291
+        ]
+      },
+      {
+        "group_id": "1ea084b9c400da477dc4817c54624875de85aa7c40d01379de910f5d9e794e98",
+        "sample_count": 35,
+        "function_name": "http_header_next",
+        "sample_indexes_preview": [
+          532,
+          533,
+          534,
+          535,
+          536
+        ]
+      }
+    ]
+  },
+  "llamafactory": {
+    "root": "/home/syy/codellama-lora/LLaMA-Factory",
+    "commit": "97b32d3133b501432141a82949d5c7bc4d94f23a",
+    "version": "0.9.6.dev0"
+  },
+  "defaults": {
+    "webui": {
+      "learning_rate": "5e-5",
+      "num_train_epochs": "3.0",
+      "cutoff_len": 2048,
+      "batch_size": 2,
+      "gradient_accumulation_steps": 8,
+      "lr_scheduler_type": "cosine",
+      "compute_type": "bf16",
+      "packing": false,
+      "neat_packing": false,
+      "train_on_prompt": false,
+      "lora_rank": 8,
+      "lora_alpha": 16,
+      "lora_dropout": 0,
+      "lora_target": "",
+      "warmup_steps": 0,
+      "logging_steps": 5,
+      "save_steps": 100,
+      "val_size": 0,
+      "train_seed": "42",
+      "max_samples": "100000",
+      "max_grad_norm": "1.0",
+      "report_to": "none",
+      "extra_args": "{\"optim\": \"adamw_torch\"}",
+      "evidence": {
+        "file": "src/llamafactory/webui/components/train.py",
+        "lines": "52-224"
+      }
+    },
+    "dataclass": {
+      "learning_rate": "5e-05 (HF TrainingArguments)",
+      "num_train_epochs": "3.0 (HF TrainingArguments)",
+      "cutoff_len": 2048,
+      "batch_size": "per_device_train_batch_size=8 (HF)",
+      "gradient_accumulation_steps": 1,
+      "lr_scheduler_type": "linear (HF)",
+      "warmup_steps": 0,
+      "warmup_ratio": null,
+      "packing": null,
+      "packing_effective_for_sft": false,
+      "neat_packing": false,
+      "train_on_prompt": false,
+      "lora_rank": 8,
+      "lora_alpha": null,
+      "lora_alpha_effective": "lora_rank * 2 = 16 if unset",
+      "lora_dropout": 0.0,
+      "lora_target": "all",
+      "bf16": false,
+      "fp16": false,
+      "gradient_checkpointing": false,
+      "logging_steps": 500,
+      "save_steps": 500,
+      "val_size": 0.0,
+      "seed": 42,
+      "max_samples": null,
+      "report_to": "none",
+      "optim": "adamw_torch_fused",
+      "evidence": {
+        "files": [
+          "src/llamafactory/hparams/data_args.py",
+          "src/llamafactory/hparams/finetuning_args.py",
+          "src/llamafactory/hparams/parser.py:645"
+        ]
+      }
+    },
+    "example_yaml": {
+      "path": "examples/train_lora/qwen3_lora_sft.yaml",
+      "learning_rate": "1.0e-4",
+      "num_train_epochs": 3.0,
+      "cutoff_len": 2048,
+      "per_device_train_batch_size": 1,
+      "gradient_accumulation_steps": 8,
+      "lr_scheduler_type": "cosine",
+      "warmup_ratio": 0.1,
+      "bf16": true,
+      "lora_rank": 8,
+      "lora_target": "all",
+      "lora_alpha": null,
+      "packing": null,
+      "train_on_prompt": null,
+      "logging_steps": 10,
+      "save_steps": 500,
+      "val_size": null,
+      "max_samples": 1000,
+      "report_to": "none",
+      "seed": null
+    },
+    "hf_training_arguments": {
+      "learning_rate": 5e-05,
+      "num_train_epochs": 3.0,
+      "lr_scheduler_type": "linear",
+      "warmup_steps": 0,
+      "warmup_ratio": null,
+      "logging_steps": 500,
+      "save_steps": 500,
+      "seed": 42,
+      "optim": "adamw_torch_fused",
+      "bf16": false,
+      "fp16": false,
+      "gradient_checkpointing": false,
+      "report_to": "none",
+      "per_device_train_batch_size": 8,
+      "gradient_accumulation_steps": 1,
+      "max_grad_norm": 1.0
+    }
+  },
+  "leakage": {
+    "random_sample_split_risk": true,
+    "target_group_count": 51,
+    "multi_sample_groups": 49,
+    "samples_in_multi_sample_groups": 1453,
+    "note": "Same gpt/source target mapped to multiple human/assembly inputs."
+  },
+  "sanity_checks": [
+    {
+      "name": "input_total + output_total == raw_total",
+      "ok": true
+    },
+    {
+      "name": "samples == 1455",
+      "ok": true
+    },
+    {
+      "name": "cutoff↑ => truncated samples non-increasing",
+      "ok": true
+    },
+    {
+      "name": "cutoff↑ => tokens removed non-increasing",
+      "ok": true
+    },
+    {
+      "name": "input percentiles ordered",
+      "ok": true
+    },
+    {
+      "name": "output percentiles ordered",
+      "ok": true
+    },
+    {
+      "name": "total percentiles ordered",
+      "ok": true
+    },
+    {
+      "name": "target_group_count == unique outputs",
+      "ok": true
+    },
+    {
+      "name": "dataset sha256 matches expected",
+      "ok": true
+    }
+  ],
+  "audit_validation_ok": true,
+  "flags": {
+    "DATASET_HASH_MISMATCH": false,
+    "AUDIT_VALIDATION_FAILED": false,
+    "GPU_MODEL_LOADED_BY_THIS_TASK": false,
+    "TRAINING_STARTED": false
+  }
+}
