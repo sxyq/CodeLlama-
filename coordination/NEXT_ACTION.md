@@ -1,10 +1,10 @@
 # NEXT_ACTION
 
-Updated At: 2026-09-22  
+Updated At: 2026-09-22
 Current Phase: GPU RELEASED / TRAINING PREFLIGHT READY
 
-1. 运行 bash /Users/sunyiyang/codellama-lora/scripts/run_training.sh（DEFAULT-LORA-001）
-2. 产出训练指标与结果报告
-3. 按 VLLM_RUNBOOK.local.md 用 sudo -u yuyong 恢复 vLLM
+1. bash /Users/sunyiyang/codellama-lora/scripts/run_training.sh（DEFAULT-LORA-001）
+2. 产出训练指标
+3. 恢复 vLLM
 
-本轮未训练，vLLM 保持停止。
+本轮未训练。

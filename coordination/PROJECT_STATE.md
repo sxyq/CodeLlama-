@@ -1,18 +1,13 @@
 # PROJECT_STATE
 
-更新时间：2026-09-22（GPU-RELEASE-SUDO-001）
+更新时间：2026-09-22
 
 | 项 | 值 |
 |---|---|
 | Experiment ID | DEFAULT-LORA-001 |
 | 当前阶段 | GPU RELEASED / TRAINING PREFLIGHT READY |
 | VLLM_STOPPED | YES |
-| PORT_8000_RELEASED | YES |
 | GPU_READY | YES |
 | TRAINING_PREFLIGHT_READY | YES |
 | VLLM_RESTART_VIA_SUDO_READY | YES |
 | TRAINING_STARTED | NO |
-| Dataset / YAML / Output | PASS |
-| Token / Steps | 冻结（273 steps） |
-
-下一步：DEFAULT-LORA-001 训练 → 恢复 vLLM。

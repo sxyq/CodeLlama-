@@ -1,6 +1,6 @@
 # CodeLlama LoRA 微调项目——当前状态
 
-任务编号：GPU-RELEASE-SUDO-001  
+任务编号：GPU-RELEASE-SUDO-001
 更新时间：2026-09-22
 
 | 项目 | 事实 |
