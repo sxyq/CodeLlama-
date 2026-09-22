@@ -53,6 +53,7 @@ def main() -> int:
     cfg = pyyaml.safe_load(yaml_path.read_text())
     required = {
         "model_name_or_path": "/data/vllm/CodeLlama-13b-Instruct-hf",
+        "disable_gradient_checkpointing": False,
         "stage": "sft",
         "do_train": True,
         "finetuning_type": "lora",
@@ -72,6 +73,7 @@ def main() -> int:
         "lora_target": "all",
         "bf16": True,
         "val_size": 0,
+        "seed": 42,
     }
     yaml_checks = []
     for k, exp in required.items():

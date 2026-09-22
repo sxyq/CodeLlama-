@@ -121,19 +121,18 @@ DATASET MODIFIED = NO
 | bf16 | true | 默认基线（WebUI compute_type），显式 YAML |
 | val_size | 0 | 默认基线，显式 YAML |
 | seed | 42 | 显式 YAML |
-| warmup_steps | 0 | 显式 YAML |
-| warmup_ratio | 0.0 | 显式 YAML |
-| optim | adamw_torch | 显式 YAML |
-| logging_steps | 5 | 显式 YAML |
-| save_steps | 100 | 显式 YAML |
-| gradient_checkpointing | false | 显式 YAML |
-| report_to | none | 显式 YAML |
-| max_samples | null（全部 1455） | 显式 YAML |
-| dataloader_drop_last | false | 显式 YAML |
+| **Gradient checkpointing** | **ENABLED** | LF `disable_gradient_checkpointing: false`（默认） |
+| Control field | `disable_gradient_checkpointing` | `ModelArguments` |
+| Default value | `false` | 保持 |
+| Final value | `false` | 显式 YAML |
+| trust_remote_code | 删除（默认 false） | CodeLlama 无需 remote code |
+| preprocessing_num_workers | 删除（默认 None） | 非必需 |
+| plot_loss | 删除（默认 false） | loss 走 trainer log / metrics |
 | output_dir | `$HOME/codellama-lora/outputs/default_baseline_lora` | 显式 YAML |
 | logging_dir | `$HOME/codellama-lora/logs/training/default_baseline_lora` | 显式 YAML |
 
-主配置文件：`$HOME/codellama-lora/configs/training/default_baseline_lora.yaml`
+主配置文件：`$HOME/codellama-lora/configs/training/default_baseline_lora.yaml`  
+字段差异审计：`$HOME/codellama-lora/reports/CONFIG_DIFF.md`
 
 ## Batch / Steps
 
