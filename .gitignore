@@ -1,0 +1,10 @@
+coordination/*.local.md
+.env
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+id_ecdsa*
+Fine-Tuning*.json
+data/Fine-Tuning.json
+reports/.DS_Store

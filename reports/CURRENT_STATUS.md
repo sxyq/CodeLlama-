@@ -1,72 +1,70 @@
 # CodeLlama LoRA 微调项目——当前状态
 
-任务编号：CONFIG-FINALIZE-001 完成后更新  
+任务编号：HANDOFF-VLLM-AUDIT-001 完成后更新  
 更新时间：2026-09-22
 
 ## 0. 当前总览
 
 | 项目 | 事实 |
 |---|---|
-| Current Phase | **TRAINING CONFIGURATION FINALIZATION** |
+| Current Phase | **VLLM LIFECYCLE / HANDOFF READY** |
 | Experiment ID | DEFAULT-LORA-001 |
-| TRAIN_CONFIG_READY | **YES** |
-| DEFAULT_BASELINE_VERIFIED | **YES** |
-| TRAINING_STARTED | **NO** |
-| GPU_READY | **NO** |
-| NON_DEFAULT_WITHOUT_REASON | **0** |
-| Token accounting changed | NO |
-| Optimizer steps changed | NO |
-| Training samples | 1455 |
-| Validation / Test | 0 / 0 |
-| Base model / Dataset | 未修改 |
-| vLLM | 未受影响 |
+| TRAIN_CONFIG_READY | YES |
+| DEFAULT_BASELINE_VERIFIED | YES |
+| AGENT_HANDOFF_READY | YES |
+| SSH_ACCESS_DOCUMENTED | YES |
+| VLLM_LIFECYCLE_READY | YES |
+| GPU_CURRENTLY_OCCUPIED | YES |
+| GPU_RECLAIMABLE | YES |
+| TRAINING_STARTED | NO |
+| vLLM stopped | NO（本轮未停止） |
+| vLLM required for LoRA training | NO |
 
-## 1. Gradient Checkpointing（已校正）
+## 1. 交接体系
+
+```text
+AGENTS.md
+coordination/
+├── PROJECT_STATE.md
+├── LAST_HANDOFF.md
+├── NEXT_ACTION.md
+├── REMOTE_RUNBOOK.md
+├── REMOTE_ACCESS.local.md   # PRIVATE
+└── VLLM_RUNBOOK.local.md    # PRIVATE
+```
+
+新 Agent 必须按 `AGENTS.md` 顺序读取后再行动。
+
+## 2. vLLM 生命周期摘要
 
 | 项 | 值 |
 |---|---|
-| LLaMA-Factory Gradient Checkpointing | **ENABLED** |
-| Default | **YES** |
-| Control field | `disable_gradient_checkpointing` |
-| Default / Final | `false` / `false` |
-| HF `gradient_checkpointing` | 不写入 YAML |
-| 源码 | `checkpointing.py`：`if not model_args.disable_gradient_checkpointing` → enable |
+| VLLM_MODEL_MATCH | YES（CodeLlama-13b-Instruct-hf） |
+| PID | 2570949 / EngineCore 2571460 |
+| Owner | yuyong |
+| Launch method | tmux `vllm` → zsh → `vllm serve --config qwen3-5.yaml` |
+| Working directory | `/home/yuyong/vllm`（推断） |
+| Python | `/home/yuyong/vllm/.venv` |
+| Host / Port | 0.0.0.0:8000 |
+| AUTO_RESTART | NO |
+| Graceful stop / Restart | 方案已写入私有 runbook，NOT EXECUTED |
+| POST_RESTART_VALIDATION | 已定义 |
 
-## 2. 最终 YAML
-
-`configs/training/default_baseline_lora.yaml`
-
-核心参数保持：sft / lora / llama2 / cutoff 2048 / packing false / train_on_prompt false / lr 5e-5 / epochs 3 / batch 2 / accum 8 / cosine / rank 8 / alpha 16 / dropout 0 / target all / bf16 / val_size 0 / seed 42。
-
-已删除非必要字段：`trust_remote_code`、`preprocessing_num_workers`、`plot_loss`、`gradient_checkpointing`、`overwrite_output_dir`、`warmup_*`、`optim`、`logging_steps`、`save_steps` 等。详见 `reports/CONFIG_DIFF.md`。
-
-## 3. Token / Steps（未变）
-
-| 口径 | Input | Output | Total |
-|---|---:|---:|---:|
-| Train / epoch（2048 后） | 1,411,053 | 263,850 | 1,674,903 |
-| 3E presentations | 4,233,159 | 791,550 | 5,024,709 |
-
-Optimizer steps = **273**
-
-## 4. 确认项
+## 3. 训练状态
 
 ```text
-TRAINING STARTED = NO
+TRAINING_STARTED = NO
 GPU MODEL LOADED = NO
-VLLM AFFECTED = NO
-DATASET MODIFIED = NO
-BASE MODEL MODIFIED = NO
 TOKEN ACCOUNTING CHANGED = NO
-OPTIMIZER STEPS CHANGED = NO
-NON_DEFAULT_WITHOUT_REASON = 0
+OPTIMIZER STEPS = 273
 ```
 
-## 5. Blocking Issues
+## 4. Blocking Issues
 
-1. GPU 显存被 vLLM 占用（GPU_READY = NO）。
+1. A6000 被 vLLM 占用（可回收）。
 2. MEMORY FIT = UNVERIFIED。
+3. vLLM 属主为 `yuyong`，停止/恢复可能需要对应权限。
 
-## 6. 下一步
+## 5. 下一步
 
-Commander 确认后执行 `scripts/run_training.sh`（本轮未运行）。
+见 `coordination/NEXT_ACTION.md`：审核 → 停 vLLM → 确认显存 → 训练 → 恢复 vLLM。
