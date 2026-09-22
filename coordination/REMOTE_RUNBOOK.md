@@ -47,8 +47,9 @@ bash $HOME/codellama-lora/scripts/run_training.sh
 - LoRA 训练 **不需要** vLLM（LLaMA-Factory + PyTorch 直接读基础模型）
 - 训练前需释放 vLLM 显存；训练后需恢复服务
 - 管理方式：tmux session `vllm`（细节见私有 runbook）
-- stop/restart 具体命令与验证清单：仅本地 `coordination/VLLM_RUNBOOK.local.md`（方案已确认，本轮未执行 stop）
+- stop/restart 具体命令与验证清单：仅本地 `coordination/VLLM_RUNBOOK.local.md`（历史方案；训练后已恢复，**当前勿再 stop/restart**）
 - AUTO_RESTART = NO
+- FINAL-PROJECT-CLOSEOUT-001 核验：health=200，models=OK；当前实例由 syy 启动、yuyong venv PATH/PYTHONPATH、`qwen3-5.yaml`
 
 ## 禁止写入本文
 

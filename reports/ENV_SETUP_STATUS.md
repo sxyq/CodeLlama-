@@ -139,7 +139,7 @@ $HOME/codellama-lora/
 | util | 0% |
 | 占用 | VLLM::EngineCore 43662 MiB；gnome-remote-desktop 266 MiB |
 
-**GPU TRAINING NOT STARTED**
+**GPU TRAINING NOT STARTED**（环境准备阶段历史结论；当前最终状态见 `reports/CURRENT_STATUS.md`：TRAINING_STATUS = SUCCESS）
 
 ## Verification
 
@@ -150,14 +150,16 @@ $HOME/codellama-lora/
 | Python ready | YES（`.venv` / 3.12.3） |
 | LLaMA-Factory ready | YES（0.9.6.dev0 @ 97b32d3） |
 | Base model readable | YES |
-| Training started | **NO** |
+| Training started（当时） | **NO**（历史；正式训练随后完成） |
 
 ```text
-TRAINING_STARTED = NO
+ENV_SETUP_SNAPSHOT:
+TRAINING_STARTED = NO（当时）
 BASE_MODEL_MODIFIED = NO
 VLLM_AFFECTED = NO
 OLLAMA_AFFECTED = NO
 ENV READY = YES
+CURRENT: TRAINING_STATUS = SUCCESS / EXPERIMENT_COMPLETED = YES
 ```
 
 ## 未执行事项

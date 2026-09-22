@@ -1,29 +1,40 @@
 # PROJECT_STATE
 
-更新时间：2026-09-23
+更新时间：2026-09-23  
+Task: FINAL-PROJECT-CLOSEOUT-001
 
 | 项 | 值 |
 |---|---|
 | Experiment ID | DEFAULT-LORA-001 |
 | 当前阶段 | EXPERIMENT COMPLETED / ARCHIVED |
+| EXPERIMENT_COMPLETED | YES |
 | TRAINING_STATUS | SUCCESS |
 | TRAINING_COMPLETED | YES |
+| Epochs / Global Steps | 3.0 · 273 / 273 |
+| Total Training Tokens | 5,024,709 |
+| Wall Seconds | 8,989 |
+| Trainer Runtime | 8,905 |
 | ARTIFACT_INVENTORY_COMPLETE | YES |
 | LOCAL_ARCHIVE_COMPLETE | YES |
-| ADAPTER_INTEGRITY | PASS |
 | GITHUB_ARCHIVE_COMPLETE | YES |
-| Git LFS | AVAILABLE |
+| ADAPTER_INTEGRITY | PASS |
+| Git LFS | AVAILABLE / USED / PASS |
 | Adapter GitHub method | GIT-LFS |
 | Checkpoint GitHub method | GIT-LFS |
 | VLLM_RESTORED | YES |
+| VLLM_OPERATIONAL | YES |
 | VLLM_HEALTH | 200 |
 | VLLM_MODELS_OK | YES |
 | Served model | codellama-13b-instruct-hf |
-| EXPERIMENT_COMPLETED | YES |
+| BLOCKING_ISSUE | NONE |
 | Total artifact files | 54 |
 | Total artifact size | 510850913 bytes |
 | Adapter SHA256 | 191d6e982ad91a8750c5b2f51a42ca36b9f94a74dec1d3155dd0b2c2ab1f9ac9 |
+| Train commit | c5afce6 train: complete DEFAULT-LORA-001 formal LoRA run |
 | Archive commit | 0ff433d archive: preserve DEFAULT-LORA-001 artifacts and restore vLLM |
+| Docs commits | 04bd8f6 · d268820 |
 | Local archive | artifacts/DEFAULT-LORA-001 |
 | Manifest | reports/ARTIFACT_MANIFEST.md + .json |
+| Next Action | NONE — WAIT FOR USER REQUEST |
+| vLLM owner | 当前实例 syy 启动（yuyong venv PATH/PYTHONPATH + qwen3-5.yaml）；owner 归还属独立运维，非本实验 blocker |
 | vLLM start method | 当前账户 syy + 系统 python3.12 + yuyong venv PYTHONPATH/PATH（原 sudo -u yuyong 路径需密码） |

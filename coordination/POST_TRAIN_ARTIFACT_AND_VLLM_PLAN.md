@@ -1,9 +1,10 @@
 # DEFAULT-LORA-001 训练后产物归档与 vLLM 恢复计划
 
 更新时间：2026-09-23  
-实验：`DEFAULT-LORA-001`
+实验：`DEFAULT-LORA-001`  
+状态：计划已执行完毕（历史计划文档；最终状态见 `reports/CURRENT_STATUS.md` 与 `coordination/LAST_HANDOFF.md`）
 
-## 1. 当前状态
+## 1. 计划制定时的状态（历史记录）
 
 正式 LoRA 微调已经完成：
 
@@ -16,10 +17,10 @@
 - Adapter path: `$HOME/codellama-lora/outputs/default_baseline_lora`
 - Checkpoint: `checkpoint-273`
 - Adapter SHA256: `191d6e982ad91a8750c5b2f51a42ca36b9f94a74dec1d3155dd0b2c2ab1f9ac9`
-- vLLM: **当前停止**
-- Port 8000: **当前未监听**
+- vLLM: **当时停止（历史）**；现已恢复并运行中（health=200）
+- Port 8000: **当时未监听（历史）**；现已 LISTENING
 
-当前用户要求的顺序：
+计划制定时用户要求的顺序：
 
 1. 先把训练相关产物完整盘点清楚；
 2. 校验大小、SHA256、文件数量和用途；

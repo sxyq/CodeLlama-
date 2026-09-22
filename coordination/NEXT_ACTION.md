@@ -1,12 +1,36 @@
 # NEXT_ACTION
 
-Updated At: 2026-09-23
-Current Phase: EXPERIMENT COMPLETED / ARCHIVED
+Updated At: 2026-09-23  
+Task: FINAL-PROJECT-CLOSEOUT-001
 
-Next Action: NONE REQUIRED
+Current Phase:
+
+EXPERIMENT COMPLETED / ARCHIVED
+
+Next Action:
+
+NONE REQUIRED
 
 WAIT FOR USER REQUEST
 
-- 归档：COMPLETE
-- vLLM：RESTORED（health=200，models=OK）
-- 禁止自动二次训练 / benchmark
+Flags:
+
+- EXPERIMENT_COMPLETED = YES
+- TRAINING_STATUS = SUCCESS
+- ARTIFACT_INVENTORY_COMPLETE = YES
+- LOCAL_ARCHIVE_COMPLETE = YES
+- GITHUB_ARCHIVE_COMPLETE = YES
+- ADAPTER_INTEGRITY = PASS
+- VLLM_RESTORED = YES
+- VLLM_OPERATIONAL = YES
+- VLLM_HEALTH = 200
+- BLOCKING_ISSUE = NONE
+- 禁止自动二次训练 / benchmark / 改 adapter / 重传 LFS / 停 vLLM
+
+Optional future tasks:
+
+- LoRA deployment
+- LoRA merge
+- vLLM LoRA loading
+- report/paper writing
+- new experiment
