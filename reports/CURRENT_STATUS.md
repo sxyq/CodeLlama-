@@ -1,42 +1,42 @@
-# CodeLlama LoRA Project — Current Status
+# CodeLlama LoRA 项目——当前状态
 
-> **Audit ID:** STATUS-AUDIT-001  
-> **Generated:** 2026-09-22T15:34 Asia/Shanghai  
-> **Mode:** READ-ONLY — no installation, deletion, configuration change, process control, download, or training was performed.
+> **审计编号：** STATUS-AUDIT-001  
+> **生成时间：** 2026-09-22T15:34 Asia/Shanghai  
+> **模式：** 只读——未执行任何安装、删除、配置变更、进程控制、下载或训练操作。
 
 ---
 
-## 0. Snapshot
+## 0. 总览快照
 
-| Item | Value |
+| 条目 | 值 |
 |------|-------|
-| Audit date | 2026-09-22 |
-| Local machine | `[LOCAL-MAC]` macOS |
-| Remote machine | `[REMOTE-SERVER]` Ubuntu 24.04.4 LTS, kernel 6.8.0-87-generic x86_64 |
-| Designated project | `/Users/sunyiyang/Desktop/Project/路由` (ModelRouter research) |
-| Status sync repo | `https://github.com/sxyq/CodeLlama-.git` (`main` branch, no commits yet) |
-| CodeLlama model | **FOUND** on `[REMOTE-SERVER]` — CodeLlama-13b-Instruct-hf (~49 GB) |
-| Fine-Tuning.json | **NOT FOUND** in the accessible `[LOCAL-MAC]` and `[REMOTE-SERVER]` search scope |
-| LLaMA-Factory | **NOT FOUND** on either side |
-| `[REMOTE-SERVER]` training running | **NO** |
-| `[LOCAL-MAC]` / `[REMOTE-SERVER]` LoRA training can start now | **NO** |
+| 审计日期 | 2026-09-22 |
+| 本地机器 | `[LOCAL-MAC]` macOS |
+| 远程机器 | `[REMOTE-SERVER]` Ubuntu 24.04.4 LTS，内核 6.8.0-87-generic x86_64 |
+| 指定项目 | `/Users/sunyiyang/Desktop/Project/路由`（ModelRouter 研究） |
+| 状态同步仓库 | `https://github.com/sxyq/CodeLlama-.git`（`main` 分支；本报告随后完成首次同步） |
+| CodeLlama 模型 | **FOUND**——位于 `[REMOTE-SERVER]`，CodeLlama-13b-Instruct-hf（约 49 GB） |
+| Fine-Tuning.json | **NOT FOUND**——在可访问的 `[LOCAL-MAC]` 和 `[REMOTE-SERVER]` 搜索范围内未找到 |
+| LLaMA-Factory | **NOT FOUND**——两端均未找到 |
+| `[REMOTE-SERVER]` 是否有训练任务在运行 | **NO** |
+| `[LOCAL-MAC]` / `[REMOTE-SERVER]` 能否立即开始 LoRA 训练 | **NO** |
 
 ---
 
-## 1. Local Mac
+## 1. 本地 Mac
 
-### 1.1 Working Directory & Git
+### 1.1 工作目录与 Git
 
-All checks in this section: `[LOCAL-MAC]`.
+本节所有检查来源：`[LOCAL-MAC]`。
 
-| Check | Result |
+| 检查项 | 结果 |
 |-------|--------|
 | `pwd` | `/Users/sunyiyang/Desktop/Project/路由` |
-| Branch | `main` |
-| Remote | `origin` → `https://github.com/sxyq/modelrouter.git` |
-| HEAD commit | `2557d3f Move deck trio into汇报/PPT, add script and screenshots` |
+| 分支 | `main` |
+| 远程仓库 | `origin` → `https://github.com/sxyq/modelrouter.git` |
+| HEAD 提交 | `2557d3f Move deck trio into汇报/PPT, add script and screenshots` |
 
-**Recent commits (git log --oneline -5):**
+**最近提交记录（git log --oneline -5）：**
 
 ```
 2557d3f Move deck trio into汇报/PPT, add script and screenshots
@@ -46,9 +46,9 @@ All checks in this section: `[LOCAL-MAC]`.
 1de62d8 Add P4 KV cache slide
 ```
 
-**Working tree (pre-existing user changes — not touched by this audit):**
+**工作区状态（用户已有的变更——本次审计未做任何修改）：**
 
-| Status | File |
+| 状态 | 文件 |
 |--------|------|
 | D | `our-project/papers/unified-ai-gateway.txt` |
 | D | `our-project/slides/assets/unified-ai-gateway-concept.png` |
@@ -57,104 +57,104 @@ All checks in this section: `[LOCAL-MAC]`.
 | M | `our-project/汇报/PPT/assets/deck-images/page-20.png` |
 | ?? | `our-project/汇报/data-readiness-routing-report.html` |
 
-### 1.2 Project Structure & Key Files
+### 1.2 项目结构与关键文件
 
-| Path | Description |
+| 路径 | 说明 |
 |------|-------------|
-| `README.md` | ModelRouter research project; `our-project/` research material, `external-projects/` source registrations. Explicitly excludes raw server logs and credentials. |
-| `our-project/README.md` | Literature, data, papers, and planning directories. |
-| `our-project/data/README.md` | Source/cleaned/summary data layers; data is call-level, not task-level billing. |
-| `our-project/planning/IMPLEMENTATION_RESEARCH.md` | Routing research design (agent trajectory/cost logging, admission-time prediction, model × effort selection). **LoRA is not the focus of this document.** |
-| `our-project/literature/` | Related papers, brief, report. |
-| `our-project/汇报/` | PPT planning, deck images, data readiness report. |
-| `external-projects/` | Vendored semantic-router, RouterBench, TwinRouterBench, MTRouter, LangGraph, AgentOpt, Best-Route-LLM registrations. |
+| `README.md` | ModelRouter 研究项目；`our-project/` 存放研究资料，`external-projects/` 存放外部项目注册。明确排除原始服务器日志和凭据。 |
+| `our-project/README.md` | 文献、数据、论文和计划目录。 |
+| `our-project/data/README.md` | 源数据/清洗数据/汇总数据分层；数据粒度为调用级别，非任务级别计费。 |
+| `our-project/planning/IMPLEMENTATION_RESEARCH.md` | 路由研究设计（Agent 轨迹/成本日志、准入时预测、模型 × 工作量选择）。**LoRA 不是本文档的关注点。** |
+| `our-project/literature/` | 相关论文、简报、报告。 |
+| `our-project/汇报/` | PPT 策划、幻灯片图片、数据就绪报告。 |
+| `external-projects/` | 已注册的 semantic-router、RouterBench、TwinRouterBench、MTRouter、LangGraph、AgentOpt、Best-Route-LLM。 |
 
-### 1.3 CodeLlama / LoRA / Fine-Tuning Artifacts on Local Mac
+### 1.3 本地 Mac 上的 CodeLlama / LoRA / 微调相关产物
 
-| Artifact | Status |
+| 产物 | 状态 |
 |----------|--------|
-| `Fine-Tuning.json` (or `Fine_Tuning.json`) | **NOT FOUND** — scanned Desktop, Documents, Downloads, and designated project. |
-| CodeLlama model directory | **NOT FOUND** locally. |
-| LLaMA-Factory checkout | **NOT FOUND** locally. |
-| CodeLlama LoRA YAML | **NOT FOUND** locally. |
-| CodeLlama training script | **NOT FOUND** locally. |
-| CodeLlama benchmark script | **NOT FOUND** locally. |
-| CodeLlama training log | **NOT FOUND** locally. |
-| `AGENTS.md` / root `CLAUDE.md` | **NOT FOUND** in project root (nested copies belong to vendored external repos). |
+| `Fine-Tuning.json`（或 `Fine_Tuning.json`） | **NOT FOUND**——已扫描 Desktop、Documents、Downloads 及指定项目目录。 |
+| CodeLlama 模型目录 | **NOT FOUND**——本地未找到。 |
+| LLaMA-Factory 仓库克隆 | **NOT FOUND**——本地未找到。 |
+| CodeLlama LoRA YAML 配置 | **NOT FOUND**——本地未找到。 |
+| CodeLlama 训练脚本 | **NOT FOUND**——本地未找到。 |
+| CodeLlama 评测脚本 | **NOT FOUND**——本地未找到。 |
+| CodeLlama 训练日志 | **NOT FOUND**——本地未找到。 |
+| `AGENTS.md` / 根目录 `CLAUDE.md` | **NOT FOUND**——项目根目录未找到（嵌套副本属于外部引入的第三方仓库）。 |
 
-> **Note:** The vendored `semantic-router` tree contains unrelated BERT/ModernBERT classifier fine-tuning scripts using PEFT/LoRA and public datasets. Header inspection confirms they are classification examples, **not** CodeLlama-13B instruction tuning. No evidence of execution was found.
+> **备注：** 引入的 `semantic-router` 目录树中包含无关的 BERT/ModernBERT 分类器微调脚本，使用 PEFT/LoRA 和公开数据集。文件头检查确认它们是分类示例，**并非** CodeLlama-13B 指令微调。未发现执行痕迹。
 
-### 1.4 Fine-Tuning.json Detail
+### 1.4 Fine-Tuning.json 详情
 
-| Field | Value |
+| 字段 | 值 |
 |-------|-------|
-| Path | **NOT FOUND** |
-| Size | N/A |
+| 路径 | **NOT FOUND** |
+| 大小 | N/A |
 | SHA256 | N/A |
-| Parsed | N/A |
-| Sample count | N/A |
+| 解析结果 | N/A |
+| 样本数 | N/A |
 
 ---
 
-## 2. Remote Server
+## 2. 远程服务器
 
-All checks in this section: `[REMOTE-SERVER]`.
+本节所有检查来源：`[REMOTE-SERVER]`。
 
-### 2.1 System
+### 2.1 系统信息
 
-| Check | Result |
+| 检查项 | 结果 |
 |-------|--------|
-| Hostname | `REMOTE-SERVER` (redacted) |
-| Date (at check) | `2026-09-22T14:41:28+08:00` |
-| OS | Ubuntu 24.04.4 LTS |
-| Kernel | Linux 6.8.0-87-generic x86_64 |
+| 主机名 | `REMOTE-SERVER`（已脱敏） |
+| 检查时日期 | `2026-09-22T14:41:28+08:00` |
+| 操作系统 | Ubuntu 24.04.4 LTS |
+| 内核 | Linux 6.8.0-87-generic x86_64 |
 | Shell | `/bin/bash` |
-| Uptime | 17 weeks 5 days 2 hours 47 minutes |
+| 运行时长 | 17 周 5 天 2 小时 47 分钟 |
 
-### 2.2 Storage
+### 2.2 存储
 
-| Filesystem | Type | Size | Used | Avail | Use% |
+| 文件系统 | 类型 | 总容量 | 已用 | 可用 | 使用率 |
 |------------|------|------|------|-------|------|
-| Root (`/`) | ext4 | 3.5 T | 2.0 T | 1.4 T | 60% |
+| 根分区（`/`） | ext4 | 3.5 T | 2.0 T | 1.4 T | 60% |
 
-No separate model filesystem was reported by `df -hT`.
+`df -hT` 未报告单独的模型文件系统。
 
-### 2.3 Memory
+### 2.3 内存
 
-| Metric | Value |
+| 指标 | 值 |
 |--------|-------|
-| RAM total | 376 GiB |
-| RAM used | 22 GiB |
-| RAM free | 50 GiB |
-| RAM available | 354 GiB |
+| 总 RAM | 376 GiB |
+| 已用 RAM | 22 GiB |
+| 空闲 RAM | 50 GiB |
+| 可用 RAM | 354 GiB |
 | Swap | 0 B |
 
 ### 2.4 GPU / NPU
 
-| Device | Details |
+| 设备 | 详情 |
 |--------|---------|
-| GPU | **NVIDIA RTX A6000** (GA102GL), 49,140 MiB total |
-| GPU memory used | 43,966 MiB (vLLM ~43,662 MiB + GNOME remote-desktop ~266 MiB) |
-| GPU memory free | 4,574 MiB |
-| GPU utilization | 0% at check time |
-| NPU (`npu-smi`) | **NOT FOUND** |
-| Ascend PCI device | **NOT FOUND** — PCI inventory shows NVIDIA GA102GL only |
+| GPU | **NVIDIA RTX A6000**（GA102GL），总显存 49,140 MiB |
+| GPU 已用显存 | 43,966 MiB（vLLM 约 43,662 MiB + GNOME remote-desktop 约 266 MiB） |
+| GPU 空闲显存 | 4,574 MiB |
+| GPU 利用率 | 检查时为 0% |
+| NPU（`npu-smi`） | **NOT FOUND** |
+| 昇腾 PCI 设备 | **NOT FOUND**——PCI 设备清单仅显示 NVIDIA GA102GL |
 
-### 2.5 Relevant Processes
+### 2.5 相关进程
 
-| Process | Notes |
+| 进程 | 备注 |
 |---------|-------|
-| vLLM engine | Running, serving CodeLlama-13b-Instruct-hf, ~43.7 GiB GPU |
-| Ollama | Active service |
-| Jupyter | Port 8888 |
-| Open WebUI | Port 3000 |
-| SSH | Active |
-| Docker | Active service (socket permissions denied to audit login) |
-| `torchrun` / `deepspeed` / `accelerate launch` / LLaMA-Factory training | **NONE found** |
+| vLLM 引擎 | 运行中，服务 CodeLlama-13b-Instruct-hf，占用约 43.7 GiB GPU 显存 |
+| Ollama | 服务活跃 |
+| Jupyter | 端口 8888 |
+| Open WebUI | 端口 3000 |
+| SSH | 活跃 |
+| Docker | 服务活跃（审计账号无 socket 权限） |
+| `torchrun` / `deepspeed` / `accelerate launch` / LLaMA-Factory 训练 | **NONE** |
 
-### 2.6 Relevant Ports
+### 2.6 相关端口
 
-| Port | Service |
+| 端口 | 服务 |
 |------|---------|
 | 8000 | vLLM API |
 | 8888 | Jupyter |
@@ -163,32 +163,32 @@ No separate model filesystem was reported by `df -hT`.
 
 ---
 
-## 3. ML Environment
+## 3. 机器学习环境
 
 ### 3.1 [REMOTE-SERVER] Python
 
-| Check | Result |
+| 检查项 | 结果 |
 |-------|--------|
-| System Python | `/usr/bin/python3` → Python 3.12.3 |
-| `python` command | **NOT FOUND** in audit login PATH |
+| 系统 Python | `/usr/bin/python3` → Python 3.12.3 |
+| `python` 命令 | **NOT FOUND**——审计账号 PATH 中不存在 |
 | conda / mamba / micromamba | **NOT FOUND** |
 | `llamafactory-cli` | **NOT FOUND** |
 
-### 3.2 [REMOTE-SERVER] System Python Imports (all failed)
+### 3.2 [REMOTE-SERVER] 系统 Python 导入测试（全部失败）
 
-`torch`, `torch_npu`, `transformers`, `peft`, `accelerate`, `datasets`, `safetensors`, `llamafactory`, `vllm`, `tokenizers` — all **ModuleNotFoundError** from system Python.
+`torch`、`torch_npu`、`transformers`、`peft`、`accelerate`、`datasets`、`safetensors`、`llamafactory`、`vllm`、`tokenizers`——从系统 Python 导入均报 **ModuleNotFoundError**。
 
-### 3.3 [REMOTE-SERVER] vLLM Virtual Environment
+### 3.3 [REMOTE-SERVER] vLLM 虚拟环境
 
-| Field | Value |
+| 字段 | 值 |
 |-------|-------|
-| Path | `/home/████/vllm/.venv` (owner redacted) |
-| Base Python | CPython 3.12.10 (managed by uv) |
-| Accessible to audit login | Read metadata only; interpreter not executable |
+| 路径 | `/home/████/vllm/.venv`（所有者已脱敏） |
+| 基础 Python | CPython 3.12.10（由 uv 管理） |
+| 审计账号可访问性 | 仅可读取元数据；解释器不可执行 |
 
-**Packages found in vLLM venv:**
+**vLLM 虚拟环境中已安装的包：**
 
-| Package | Version |
+| 包名 | 版本 |
 |---------|---------|
 | `torch` | 2.11.0+cu128 |
 | `transformers` | 5.9.0 |
@@ -196,49 +196,49 @@ No separate model filesystem was reported by `df -hT`.
 | `tokenizers` | 0.22.2 |
 | `vllm` | 0.22.0 |
 
-**Packages NOT present in vLLM venv:**
+**vLLM 虚拟环境中未安装的包：**
 
-`torch_npu`, `peft`, `accelerate`, `datasets`, `llamafactory`
+`torch_npu`、`peft`、`accelerate`、`datasets`、`llamafactory`
 
-### 3.4 [REMOTE-SERVER] CANN / Ascend
+### 3.4 [REMOTE-SERVER] CANN / 昇腾
 
-| Check | Result |
+| 检查项 | 结果 |
 |-------|--------|
-| `torch_npu` | **NOT FOUND** (not installed anywhere) |
-| CANN toolkit | **NOT FOUND** |
-| Ascend env vars | **NOT FOUND** |
-| Ascend directories | **NOT FOUND** under `/usr/local/Ascend`, `/opt` |
+| `torch_npu` | **NOT FOUND**（任何位置均未安装） |
+| CANN 工具包 | **NOT FOUND** |
+| 昇腾环境变量 | **NOT FOUND** |
+| 昇腾目录 | **NOT FOUND**——`/usr/local/Ascend`、`/opt` 下均未找到 |
 
-> **Conclusion:** The remote server is a **CUDA/NVIDIA** environment (RTX A6000 + CUDA 12.8). It is **not** Ascend-ready and has no NPU hardware.
+> **结论：** 远程服务器为 **CUDA/NVIDIA** 环境（RTX A6000 + CUDA 12.8）。该服务器**不具备**昇腾环境，且无 NPU 硬件。
 
 ---
 
 ## 4. LLaMA-Factory
 
-| Check | Location | Result |
+| 检查项 | 位置 | 结果 |
 |-------|----------|--------|
-| LLaMA-Factory directory | `[REMOTE-SERVER]` accessible bounded search under `/home`, `/data`, `/opt`, `/workspace`, `/srv` | **NOT FOUND** |
-| LLaMA-Factory directory | `[LOCAL-MAC]` designated project | **NOT FOUND** |
+| LLaMA-Factory 目录 | `[REMOTE-SERVER]` 可访问范围内（`/home`、`/data`、`/opt`、`/workspace`、`/srv`） | **NOT FOUND** |
+| LLaMA-Factory 目录 | `[LOCAL-MAC]` 指定项目 | **NOT FOUND** |
 | `llamafactory-cli` | `[REMOTE-SERVER]` PATH | **NOT FOUND** |
-| LLaMA-Factory git checkout | `[REMOTE-SERVER]` accessible search | **NOT FOUND** |
-| LoRA training YAML | `[REMOTE-SERVER]` | **NOT FOUND** |
-| Training shell/Python script | `[REMOTE-SERVER]` | **NOT FOUND** |
-| Benchmark script | `[REMOTE-SERVER]` | **NOT FOUND** |
-| Training log | `[REMOTE-SERVER]` | **NOT FOUND** |
+| LLaMA-Factory git 仓库克隆 | `[REMOTE-SERVER]` 可访问范围 | **NOT FOUND** |
+| LoRA 训练 YAML 配置 | `[REMOTE-SERVER]` | **NOT FOUND** |
+| 训练 shell/Python 脚本 | `[REMOTE-SERVER]` | **NOT FOUND** |
+| 评测脚本 | `[REMOTE-SERVER]` | **NOT FOUND** |
+| 训练日志 | `[REMOTE-SERVER]` | **NOT FOUND** |
 
-> The remote search was bounded and followed the audit login's readable paths. Owner-private directories under `/home` could not be fully enumerated, so these results mean “not found in the accessible search scope,” not proof that no other copy exists.
+> 远程搜索范围有限，仅遵循审计账号可读取的路径。`/home` 下属于其他用户的私有目录无法完全枚举，因此以上结果表示"在可访问搜索范围内未找到"，而非证明不存在其他副本。
 
 ---
 
-## 5. CodeLlama Model
+## 5. CodeLlama 模型
 
-### 5.1 [REMOTE-SERVER] Model Files
+### 5.1 [REMOTE-SERVER] 模型文件
 
-| Field | Value |
+| 字段 | 值 |
 |-------|-------|
-| Status | **FOUND** |
-| Path | `/data/vllm/CodeLlama-13b-Instruct-hf` |
-| Size | ~49 GB |
+| 状态 | **FOUND** |
+| 路径 | `/data/vllm/CodeLlama-13b-Instruct-hf` |
+| 大小 | 约 49 GB |
 | `model_type` | `llama` |
 | `architectures` | `[LlamaForCausalLM]` |
 | `torch_dtype` | `bfloat16` |
@@ -249,187 +249,186 @@ No separate model filesystem was reported by `df -hT`.
 | `vocab_size` | 32016 |
 | `rope_theta` | 1000000 |
 
-**Tokenizer files:** `tokenizer.json`, `tokenizer.model`, `tokenizer_config.json`, `special_tokens_map.json`, `generation_config.json` — all present.
+**分词器文件：** `tokenizer.json`、`tokenizer.model`、`tokenizer_config.json`、`special_tokens_map.json`、`generation_config.json`——全部存在。
 
-**Weight files:** 3 × safetensors shards + index; 3 × PyTorch `.bin` shards + index (duplicate formats, consuming extra disk space — no files removed during audit).
+**权重文件：** 3 × safetensors 分片 + 索引；3 × PyTorch `.bin` 分片 + 索引（两种格式重复存储，占用额外磁盘空间——审计期间未删除任何文件）。
 
-### 5.2 [REMOTE-SERVER] Active vLLM Service
+### 5.2 [REMOTE-SERVER] 活跃的 vLLM 服务
 
-| Field | Value |
+| 字段 | 值 |
 |-------|-------|
-| vLLM version | 0.22.0 |
-| Health | HTTP 200 |
+| vLLM 版本 | 0.22.0 |
+| 健康检查 | HTTP 200 |
 | `/v1/models` | HTTP 200 |
-| Served model id | `codellama-13b-instruct-hf` |
-| Model root | `/data/vllm/CodeLlama-13b-Instruct-hf` |
+| 对外模型 ID | `codellama-13b-instruct-hf` |
+| 模型根路径 | `/data/vllm/CodeLlama-13b-Instruct-hf` |
 | `max_model_len` | 16384 |
 | `gpu_memory_utilization` | 0.92 |
-| Active config file | `/home/████/vllm/qwen3-5.yaml` (filename legacy/misleading; content points to CodeLlama-13B) |
-| Fine-tuning permission | `false` (expected for inference endpoint) |
+| 活跃配置文件 | `/home/████/vllm/qwen3-5.yaml`（文件名遗留/具有误导性；实际内容指向 CodeLlama-13B） |
+| 微调权限 | `false`（推理端点的预期行为） |
 
-**Metrics at audit time:**
+**审计时的指标：**
 
-| Metric | Value |
+| 指标 | 值 |
 |--------|-------|
 | `num_requests_running` | 0 |
 | `num_requests_waiting` | 0 |
 | `prompt_tokens_total` | 14 |
 | `generation_tokens_total` | 3 |
-| `request_success_total` (stop) | 1 |
+| `request_success_total`（stop） | 1 |
 
-> One prior minimal request; no request in flight.
+> 此前仅有一次极小请求；检查时无正在处理的请求。
 
-**Alternate config:** `/home/████/vllm/codellama13b.yaml` also points to the same model, serves `codellama-13b`, with `max_num_batched_tokens=32768`. Not active per process command line.
+**备用配置：** `/home/████/vllm/codellama13b.yaml` 同样指向同一模型，对外名称为 `codellama-13b`，设置 `max_num_batched_tokens=32768`。根据进程命令行判断，该配置当前未激活。
 
 ---
 
-## 6. Dataset
+## 6. 数据集
 
-| Check | Location | Result |
+| 检查项 | 位置 | 结果 |
 |-------|----------|--------|
-| `Fine-Tuning.json` | `[LOCAL-MAC]` Desktop, Documents, Downloads, project | **NOT FOUND** |
-| `Fine-Tuning.json` | `[REMOTE-SERVER]` accessible bounded search under `/data`, `/home`, `/opt`, `/workspace`, `/srv` | **NOT FOUND** |
-| `Fine_Tuning.json` | Accessible `[LOCAL-MAC]` and `[REMOTE-SERVER]` search scope | **NOT FOUND** |
-| Any fine-tuning JSON | Accessible `[LOCAL-MAC]` and `[REMOTE-SERVER]` search scope | **NOT FOUND** |
-| SHA256 comparison | — | **UNKNOWN** (no dataset file was found to digest) |
-| Sample count | — | **N/A** |
-| Unique input/output count | — | **N/A** |
-| Function count | — | **N/A** |
+| `Fine-Tuning.json` | `[LOCAL-MAC]` Desktop、Documents、Downloads、项目目录 | **NOT FOUND** |
+| `Fine-Tuning.json` | `[REMOTE-SERVER]` 可访问范围内（`/data`、`/home`、`/opt`、`/workspace`、`/srv`） | **NOT FOUND** |
+| `Fine_Tuning.json` | `[LOCAL-MAC]` 和 `[REMOTE-SERVER]` 可访问搜索范围 | **NOT FOUND** |
+| 任意微调 JSON 文件 | `[LOCAL-MAC]` 和 `[REMOTE-SERVER]` 可访问搜索范围 | **NOT FOUND** |
+| SHA256 比对 | — | **UNKNOWN**（未找到数据集文件，无法计算摘要） |
+| 样本数 | — | **N/A** |
+| 唯一 input/output 数 | — | **N/A** |
+| 函数数 | — | **N/A** |
 
-> The remote search was bounded and followed the audit login's readable paths. Owner-private directories under `/home` could not be fully enumerated, so the dataset result remains **NOT FOUND in the accessible search scope** and the comparison remains **UNKNOWN**.
+> 远程搜索范围有限，仅遵循审计账号可读取的路径。`/home` 下属于其他用户的私有目录无法完全枚举，因此数据集结果仍为**在可访问搜索范围内 NOT FOUND**，比对结果仍为 **UNKNOWN**。
 
 ---
 
-## 7. Current Training State
+## 7. 当前训练状态
 
-| Question | Answer |
+| 问题 | 回答 |
 |----------|--------|
-| Is any CodeLlama/LoRA training process running? | **NO** |
-| Is any `torchrun` / `deepspeed` / `accelerate launch` running? | **NO** |
-| Is any LLaMA-Factory process running? | **NO** |
-| Existing GPU workload | vLLM inference (CodeLlama-13b-Instruct-hf) occupying ~43.7 GiB of 49.1 GiB GPU memory |
-| Training checkpoints found | **NONE** |
-| Training logs found | **NONE** |
-| Training output directory found | **NONE** |
+| 是否有 CodeLlama/LoRA 训练进程正在运行？ | **NO** |
+| 是否有 `torchrun` / `deepspeed` / `accelerate launch` 正在运行？ | **NO** |
+| 是否有 LLaMA-Factory 进程正在运行？ | **NO** |
+| 现有 GPU 工作负载 | vLLM 推理（CodeLlama-13b-Instruct-hf）占用约 43.7 GiB / 49.1 GiB GPU 显存 |
+| 是否找到训练检查点 | **NONE** |
+| 是否找到训练日志 | **NONE** |
+| 是否找到训练输出目录 | **NONE** |
 
 ---
 
-## 8. Readiness Assessment
+## 8. 就绪性评估
 
-| Component | Status | Evidence | Problem |
+| 组件 | 状态 | 证据 | 问题 |
 |-----------|--------|----------|---------|
-| Local project | ⚠️ PARTIAL | `[LOCAL-MAC]` Git repo exists (`modelrouter`), research materials present | Project is ModelRouter research, not a CodeLlama LoRA pipeline. No training scripts, dataset, or LoRA config exist locally. |
-| SSH | ✅ READY | `[REMOTE-SERVER]` SSH connected successfully via configured key | — |
-| Ascend runtime | ❌ NOT READY | `[REMOTE-SERVER]` No NPU hardware, no `npu-smi`, no `torch_npu`, no CANN | Server is NVIDIA CUDA, not Ascend. Requirement mismatch if Ascend is mandatory. |
-| LLaMA-Factory | ❌ NOT READY | `[REMOTE-SERVER]` + `[LOCAL-MAC]` Not installed anywhere | Must be installed and configured before training. |
-| CodeLlama model | ✅ READY | `[REMOTE-SERVER]` `/data/vllm/CodeLlama-13b-Instruct-hf` (~49 GB), config and tokenizer verified | Model is served by vLLM for inference; usable as base for LoRA training. |
-| Dataset | ❌ NOT READY | `[LOCAL-MAC]` + `[REMOTE-SERVER]` No `Fine-Tuning.json` found | Dataset must be created/uploaded before training can begin. |
-| NPU resources | ❌ NOT APPLICABLE | `[REMOTE-SERVER]` Hardware is NVIDIA RTX A6000, not Ascend NPU | If Ascend NPU is required, a different server is needed. |
-| GPU resources (CUDA) | ⚠️ CONSTRAINED | `[REMOTE-SERVER]` RTX A6000: 4,574 MiB free of 49,140 MiB (vLLM using ~43.7 GiB) | Training cannot share GPU with active vLLM service without stopping it or using a separate resource plan. |
-| **LoRA training can start now** | ❌ **NO** | Multiple blockers | See §9 Blocking Issues. |
+| 本地项目 | ⚠️ PARTIAL | `[LOCAL-MAC]` Git 仓库已存在（`modelrouter`），研究资料齐全 | 项目为 ModelRouter 研究，而非 CodeLlama LoRA 流水线。本地无训练脚本、数据集或 LoRA 配置。 |
+| SSH | ✅ READY | `[REMOTE-SERVER]` 通过已配置的密钥成功连接 SSH | — |
+| 昇腾运行时 | ❌ NOT READY | `[REMOTE-SERVER]` 无 NPU 硬件、无 `npu-smi`、无 `torch_npu`、无 CANN | 服务器为 NVIDIA CUDA 环境，非昇腾。若昇腾为硬性要求则存在需求不匹配。 |
+| LLaMA-Factory | ❌ NOT READY | `[REMOTE-SERVER]` + `[LOCAL-MAC]` 两端均未安装 | 训练前必须完成安装和配置。 |
+| CodeLlama 模型 | ✅ READY | `[REMOTE-SERVER]` `/data/vllm/CodeLlama-13b-Instruct-hf`（约 49 GB），配置和分词器已验证 | 模型当前由 vLLM 提供推理服务；可作为 LoRA 训练的基座模型。 |
+| 数据集 | ❌ NOT READY | `[LOCAL-MAC]` + `[REMOTE-SERVER]` 未找到 `Fine-Tuning.json` | 训练前必须创建/上传数据集。 |
+| NPU 资源 | ❌ NOT APPLICABLE | `[REMOTE-SERVER]` 硬件为 NVIDIA RTX A6000，非昇腾 NPU | 若要求昇腾 NPU，需更换服务器。 |
+| GPU 资源（CUDA） | ⚠️ CONSTRAINED | `[REMOTE-SERVER]` RTX A6000：49,140 MiB 中仅 4,574 MiB 空闲（vLLM 占用约 43.7 GiB） | 训练无法与活跃的 vLLM 服务共享 GPU，除非停止 vLLM 或另行规划资源。 |
+| **LoRA 训练能否立即开始** | ❌ **NO** | 存在多项阻塞 | 见 §9 阻塞问题。 |
 
 ---
 
-## 9. Blocking Issues
+## 9. 阻塞问题
 
-| # | Blocker | Severity | Details |
+| # | 阻塞项 | 严重程度 | 详情 |
 |---|---------|----------|---------|
-| 1 | **No dataset** | CRITICAL | `Fine-Tuning.json` was not found in the accessible `[LOCAL-MAC]` or `[REMOTE-SERVER]` search scope. Training is impossible without data. |
-| 2 | **No LLaMA-Factory** | 🔴 CRITICAL | LLaMA-Factory is not installed or checked out on `[REMOTE-SERVER]`. No training framework is available. |
-| 3 | **No training pipeline** | 🔴 CRITICAL | No LoRA YAML config, training script, or experiment setup exists on either side. |
-| 4 | **GPU capacity constrained** | HIGH | vLLM inference occupies ~89% of GPU memory (43.7/49.1 GiB), leaving about 4.6 GiB free. Training requires either stopping vLLM or provisioning separate GPU resources. |
-| 5 | **Missing `peft` / `accelerate` / `datasets`** | 🟠 HIGH | These packages were not found in the accessible environments on `[REMOTE-SERVER]`. Required for LoRA fine-tuning. |
-| 6 | **Ascend/NPU mismatch** | 🟡 MEDIUM | If the project plan requires Ascend NPU, the current server (NVIDIA CUDA) cannot satisfy this. Requires re-planning or a different server. |
-| 7 | **Local project scope mismatch** | 🟡 MEDIUM | The designated local project (`modelrouter`) is about API routing research, not CodeLlama LoRA fine-tuning. A dedicated project directory or branch may be needed. |
+| 1 | **无数据集** | 🔴 CRITICAL | 在可访问的 `[LOCAL-MAC]` 和 `[REMOTE-SERVER]` 搜索范围内均未找到 `Fine-Tuning.json`。没有数据则无法训练。 |
+| 2 | **无 LLaMA-Factory** | 🔴 CRITICAL | `[REMOTE-SERVER]` 上未安装或克隆 LLaMA-Factory。没有可用的训练框架。 |
+| 3 | **无训练流水线** | 🔴 CRITICAL | 两端均不存在 LoRA YAML 配置、训练脚本或实验配置。 |
+| 4 | **GPU 容量受限** | 🟠 HIGH | vLLM 推理占用约 89% 的 GPU 显存（43.7/49.1 GiB），仅剩约 4.6 GiB 空闲。训练需要停止 vLLM 或另行配置 GPU 资源。 |
+| 5 | **缺少 `peft` / `accelerate` / `datasets`** | 🟠 HIGH | 在 `[REMOTE-SERVER]` 可访问的环境中未找到这些包。LoRA 微调必须依赖它们。 |
+| 6 | **昇腾/NPU 需求不匹配** | 🟡 MEDIUM | 若项目计划要求昇腾 NPU，当前服务器（NVIDIA CUDA）无法满足。需重新规划或更换服务器。 |
+| 7 | **本地项目范围不匹配** | 🟡 MEDIUM | 指定的本地项目（`modelrouter`）为 API 路由研究，而非 CodeLlama LoRA 微调。可能需要建立专用项目目录或分支。 |
 
 ---
 
-## 10. Important Findings
+## 10. 重要发现
 
-1. **Model is live for inference.** CodeLlama-13b-Instruct-hf is actively served via vLLM v0.22.0 on port 8000 `[REMOTE-SERVER]`. The model files are intact and verified (config, tokenizer, weights). This is a positive asset — the base model is already on-server.
+1. **模型已在线提供推理服务。** CodeLlama-13b-Instruct-hf 正通过 vLLM v0.22.0 在端口 8000 上对外服务 `[REMOTE-SERVER]`。模型文件完整且已验证（配置、分词器、权重）。这是一项有利条件——基座模型已在服务器上就绪。
 
-2. **Duplicate weight formats.** `[REMOTE-SERVER]` The model directory contains both safetensors and PyTorch `.bin` shards, duplicating roughly 25 GB of weights. Consider removing one format only after confirming LLaMA-Factory's preference (safetensors recommended).
+2. **权重格式重复存储。** `[REMOTE-SERVER]` 模型目录同时包含 safetensors 和 PyTorch `.bin` 分片，约重复了 25 GB 的权重文件。建议在确认 LLaMA-Factory 偏好格式后仅保留一种（推荐 safetensors）。
 
-3. **Misleading config filename.** `[REMOTE-SERVER]` The active vLLM config is `qwen3-5.yaml` but actually serves CodeLlama-13b. This is a naming issue only and does not affect the observed inference endpoint.
+3. **配置文件名具有误导性。** `[REMOTE-SERVER]` 活跃的 vLLM 配置文件名为 `qwen3-5.yaml`，但实际服务的是 CodeLlama-13b。仅为命名问题，不影响所观测到的推理端点。
 
-4. **No Ascend hardware detected.** `[REMOTE-SERVER]` All hardware checks confirm NVIDIA CUDA only. If the upstream plan mandates Ascend/NPU, the server choice must change.
+4. **未检测到昇腾硬件。** `[REMOTE-SERVER]` 所有硬件检查均确认仅有 NVIDIA CUDA。若上游计划要求昇腾/NPU，需更换服务器。
 
-5. **vLLM venv is not suitable for training.** `[REMOTE-SERVER]` Its readable package metadata lacks `peft`, `accelerate`, and `datasets`. A separate training environment should be created.
+5. **vLLM 虚拟环境不适用于训练。** `[REMOTE-SERVER]` 其可读取的包元数据中缺少 `peft`、`accelerate` 和 `datasets`。应为训练创建独立环境。
 
-6. **Large available RAM.** `[REMOTE-SERVER]` 354 GiB RAM available is more than sufficient for data loading and preprocessing during LoRA training.
+6. **可用 RAM 充裕。** `[REMOTE-SERVER]` 354 GiB 可用 RAM 完全满足 LoRA 训练期间的数据加载和预处理需求。
 
-7. **No previous training artifacts.** `[REMOTE-SERVER]` No checkpoints, logs, or training output directories were found. This will be a fresh start.
-
----
-
-## 11. Recommended Next Checks
-
-> These are suggestions only. No action was taken during this audit.
-
-1. **Prepare and upload `Fine-Tuning.json`** — Define the instruction-tuning dataset format (e.g., Alpaca-style `instruction`/`input`/`output`), create or curate the data, compute SHA256, and upload to `[REMOTE-SERVER]`.
-
-2. **Install LLaMA-Factory on `[REMOTE-SERVER]`** — Clone the repository, create a dedicated Python venv with `torch`, `peft`, `accelerate`, `datasets`, `transformers`, and `safetensors`. Verify GPU access from the new environment.
-
-3. **Plan GPU resource allocation** — Decide whether to stop vLLM during training or schedule training during off-hours. LoRA on CodeLlama-13B with 4-bit quantization may fit in ~20 GiB, but the current vLLM occupancy must be addressed.
-
-4. **Create LoRA training configuration** — Write a LLaMA-Factory YAML specifying LoRA rank, alpha, target modules, learning rate, batch size, and output directory for CodeLlama-13b-Instruct-hf.
-
-5. **Clarify Ascend/NPU requirement** — If Ascend is no longer required (server is NVIDIA), update the project plan. If Ascend is mandatory, identify and provision an Ascend-equipped server.
+7. **无既有训练产物。** `[REMOTE-SERVER]` 未找到任何检查点、日志或训练输出目录。训练将从零开始。
 
 ---
 
-## 12. Audit Trail
+## 11. 建议的后续检查
 
-### [LOCAL-MAC] Commands
+> 以下仅为建议。本次审计期间未采取任何操作。
 
-| # | Command | Purpose |
+1. **准备并上传 `Fine-Tuning.json`**——确定指令微调数据集格式（例如 Alpaca 风格的 `instruction`/`input`/`output`），创建或整理数据，计算 SHA256，上传至 `[REMOTE-SERVER]`。
+
+2. **在 `[REMOTE-SERVER]` 上安装 LLaMA-Factory**——克隆仓库，创建专用 Python 虚拟环境并安装 `torch`、`peft`、`accelerate`、`datasets`、`transformers` 和 `safetensors`。验证新环境可访问 GPU。
+
+3. **规划 GPU 资源分配**——决定训练期间是否停止 vLLM，或安排在低峰时段训练。使用 4-bit 量化对 CodeLlama-13B 进行 LoRA 训练可能仅需约 20 GiB 显存，但必须先解决当前 vLLM 的显存占用问题。
+
+4. **创建 LoRA 训练配置**——编写 LLaMA-Factory YAML，指定 LoRA rank、alpha、目标模块、学习率、batch size 和输出目录，目标模型为 CodeLlama-13b-Instruct-hf。
+
+5. **明确昇腾/NPU 需求**——若不再要求昇腾（服务器为 NVIDIA），请更新项目计划。若昇腾为硬性要求，需寻找并配置配备昇腾硬件的服务器。
+
+---
+
+## 12. 审计轨迹
+
+### [LOCAL-MAC] 命令
+
+| # | 命令 | 用途 |
 |---|---------|---------|
-| 1 | `pwd` | Verify working directory |
-| 2 | `git status --short --branch` | Check branch and working tree |
-| 3 | `git branch --show-current` | Confirm current branch |
-| 4 | `git log --oneline -10` | Recent commit history |
-| 5 | `git remote -v` | Remote repository URL |
-| 6 | `find` (multiple invocations) | Locate project files (MD, YAML, JSON, PY, SH, LOG) |
-| 7 | `rg` / `mdfind` | Search for Fine-Tuning.json and CodeLlama artifacts |
-| 8 | File reads | README.md, our-project/README.md, our-project/data/README.md, IMPLEMENTATION_RESEARCH.md, vendored script headers |
+| 1 | `pwd` | 验证工作目录 |
+| 2 | `git status --short --branch` | 检查分支和工作区状态 |
+| 3 | `git branch --show-current` | 确认当前分支 |
+| 4 | `git log --oneline -10` | 最近提交历史 |
+| 5 | `git remote -v` | 远程仓库 URL |
+| 6 | `find`（多次调用） | 定位项目文件（MD、YAML、JSON、PY、SH、LOG） |
+| 7 | `rg` / `mdfind` | 搜索 Fine-Tuning.json 和 CodeLlama 相关产物 |
+| 8 | 文件读取 | README.md、our-project/README.md、our-project/data/README.md、IMPLEMENTATION_RESEARCH.md、第三方脚本文件头 |
 
-### [REMOTE-SERVER] Commands (all read-only via SSH)
+### [REMOTE-SERVER] 命令（全部通过 SSH 以只读方式执行）
 
-| # | Command | Purpose |
+| # | 命令 | 用途 |
 |---|---------|---------|
-| 1 | `hostname` | Server identity (redacted in report) |
-| 2 | `date -Is` | Timestamp |
-| 3 | `uname -a` | Kernel and architecture |
-| 4 | `cat /etc/os-release` | OS version |
-| 5 | `uptime` | Server uptime |
-| 6 | `free -h` | Memory usage |
-| 7 | `df -hT` | Disk usage |
-| 8 | `nvidia-smi` | GPU status, memory, processes |
-| 9 | `which npu-smi` / `nv-smi` | Check for NPU tools |
-| 10 | `lspci` | PCI device inventory |
-| 11 | `ps aux` | Running processes |
-| 12 | `systemctl list-units` | Active services |
-| 13 | `ss -tlnp` | Listening ports |
-| 14 | `find` (bounded depth) | Search for LLaMA-Factory, datasets, training artifacts |
-| 15 | `python3 -c "import ..."` | Test ML package availability |
-| 16 | `cat .venv/pyvenv.cfg` | vLLM venv Python version |
-| 17 | Package metadata reads | torch, transformers, etc. version checks |
-| 18 | `cat config.json` | Model architecture verification |
-| 19 | `ls` model directory | Tokenizer and weight file inventory |
-| 20 | `curl` vLLM `/version`, `/health`, `/v1/models`, `/metrics` | API status verification |
-| 21 | `cat qwen3-5.yaml`, `codellama13b.yaml` | vLLM config inspection |
-| 22 | Environment variable check (filtered) | CANN/Ascend env vars |
+| 1 | `hostname` | 服务器标识（报告中已脱敏） |
+| 2 | `date -Is` | 时间戳 |
+| 3 | `uname -a` | 内核和架构 |
+| 4 | `cat /etc/os-release` | 操作系统版本 |
+| 5 | `uptime` | 服务器运行时长 |
+| 6 | `free -h` | 内存使用情况 |
+| 7 | `df -hT` | 磁盘使用情况 |
+| 8 | `nvidia-smi` | GPU 状态、显存、进程 |
+| 9 | `which npu-smi` / `nv-smi` | 检查是否存在 NPU 工具 |
+| 10 | `lspci` | PCI 设备清单 |
+| 11 | `ps aux` | 运行中的进程 |
+| 12 | `systemctl list-units` | 活跃的服务 |
+| 13 | `ss -tlnp` | 监听端口 |
+| 14 | `find`（限定深度） | 搜索 LLaMA-Factory、数据集、训练产物 |
+| 15 | `python3 -c "import ..."` | 测试 ML 包可用性 |
+| 16 | `cat .venv/pyvenv.cfg` | vLLM 虚拟环境 Python 版本 |
+| 17 | 包元数据读取 | torch、transformers 等版本检查 |
+| 18 | `cat config.json` | 模型架构验证 |
+| 19 | `ls` 模型目录 | 分词器和权重文件清单 |
+| 20 | `curl` vLLM `/version`、`/health`、`/v1/models`、`/metrics` | API 状态验证 |
+| 21 | `cat qwen3-5.yaml`、`codellama13b.yaml` | vLLM 配置检查 |
+| 22 | 环境变量检查（已过滤） | CANN/昇腾环境变量 |
 
-### Compliance
+### 合规性
 
-- ✅ No SSH password, private key, API key, token, cookie, or secret was written to this report.
-- ✅ No server public/private IP address was written to this report.
-- ✅ No full username+host combination was written to this report.
-- ✅ No environment variable secret was written to this report.
-- ✅ Server references use only `REMOTE-SERVER`; local references use only `LOCAL-MAC`.
-- ✅ No remote installation, deletion, configuration change, process control, download, or training was performed.
+- ✅ 本报告未写入任何 SSH 密码、私钥、API 密钥、令牌、Cookie 或密钥。
+- ✅ 本报告未写入任何服务器公网/内网 IP 地址。
+- ✅ 本报告未写入任何完整的"用户名+主机"组合。
+- ✅ 本报告未写入任何环境变量中的敏感信息。
+- ✅ 服务器引用仅使用 `REMOTE-SERVER`；本地引用仅使用 `LOCAL-MAC`。
+- ✅ 未执行任何远程安装、删除、配置变更、进程控制、下载或训练操作。
 
 ---
 
-*Report generated by STATUS-AUDIT-001 from the read-only command evidence collected during this audit. End of report.*
-
+*本报告由 STATUS-AUDIT-001 根据审计期间收集的只读命令证据生成。报告结束。*
