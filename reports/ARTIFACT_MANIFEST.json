@@ -43,7 +43,10 @@
     "checkpoint_github_method": "GIT-LFS",
     "github_archive": "COMPLETE",
     "github_commit": "0ff433d",
-    "vllm_restored": false
+    "vllm_restored": true,
+    "vllm_health": 200,
+    "vllm_models_ok": true,
+    "experiment_completed": true
   },
   "known_data_quality_notes": [
     "TRAINING_METRICS.json / FORMAL_TRAINING_RESULT.md: reconstructed after unauthorized run_training.sh relaunch overwrote root metrics",
