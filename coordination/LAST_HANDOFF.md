@@ -1,77 +1,58 @@
 # Last Agent Handoff
 
-Updated At: 2026-09-22T20:30:00+08:00  
-Last Task ID: FORMAL-TRAIN-001  
-Status: **BLOCKED — VLLM_PERMISSION_GATE = FAIL**
+Updated At: 2026-09-22T20:20:00+08:00  
+Last Task ID: GPU-RELEASE-AUDIT-001  
+Status: **BLOCKED — STOP_EXECUTION_PERMISSION = NO**
 
 ## Completed
 
-- 按 AGENTS.md 恢复上下文并只读核对实时状态
-- 确认 vLLM 身份未变（CodeLlama-13b-Instruct-hf，port 8000，tmux `vllm`）
-- 权限探测：`syy` 对 `yuyong` vLLM 主进程 `os.kill(pid,0)` → **PERMISSION_DENIED**；`sudo -n` 需要密码
-- 完善 `run_training.sh`（完整 stdout/stderr/combined、可靠 `TRAIN_EXIT_CODE`、GPU monitor 启停）
-- 新增 `scripts/monitor_gpu.sh`
-- 增强 `collect_training_metrics.py`（gpu_monitor.csv 峰值/均值汇总）
-- 写入 `coordination/training_state.json`
-- 输出目录 `outputs/default_baseline_lora` 不存在（干净）
-
-## Current Local State
-
-- 仓库 `/Users/sunyiyang/Desktop/Project/微调/`
-- 私有 runbook 已含 stop/restart 方法
-- 训练参数与 Token 基线未改
-
-## Current Remote State
-
-- Workspace `$HOME/codellama-lora`
-- Launcher / monitor / collector 就绪
-- TRAINING_STARTED = NO
+- 恢复上下文并实时识别 vLLM PID（主 2570949 / EngineCore 2571460）
+- 记录停止前状态（date / nvidia-smi / ss :8000 / ps）
+- 确认 8000 对应预期 CodeLlama vLLM
+- 用户授权停止；执行 `kill`（SIGTERM）→ **不允许的操作**
+- 核查既有授权入口：`sudo -n` 需密码；`su yuyong` 失败；SSH `yuyong`/`root` 公钥拒绝
+- **未猜密码、未提权、未 kill -9、未训练**
+- 完成训练前服务器审计（`reports/SERVER_PRETRAIN_AUDIT.md`）
+- 更新 remote `training_state.json`
 
 ## Current GPU State
 
-- 1×RTX A6000，used ≈ 43966 MiB，free ≈ 4574 MiB
-- 仍由 vLLM EngineCore 占用
+- RTX A6000 49140 MiB / used 43966 / free 4574 / util 0%
+- VLLM::EngineCore 仍占 43662 MiB
 
 ## Current vLLM State
 
-- **仍在运行**（本轮按门禁要求未停止）
-- PID 2570949 / EngineCore 2571460，owner `yuyong`
-- Model match YES
-- AUTO_RESTART = NO
+- **仍在运行**（stop 失败）
+- Owner `yuyong`；model match YES；port 8000 LISTENING
+- 恢复信息保留于 `VLLM_RUNBOOK.local.md`
 
 ## Files Changed
 
-- `scripts/run_training.sh`（远程）
-- `scripts/monitor_gpu.sh`（远程）
-- `scripts/collect_training_metrics.py`（远程）
-- `coordination/training_state.json`（远程）
-- LOCAL：`coordination/LAST_HANDOFF.md`、`NEXT_ACTION.md`、`PROJECT_STATE.md`、`reports/CURRENT_STATUS.md`、`coordination/VLLM_RUNBOOK.local.md`
+- `reports/SERVER_PRETRAIN_AUDIT.md`（新增）
+- `reports/CURRENT_STATUS.md`
+- `coordination/{PROJECT_STATE,LAST_HANDOFF,NEXT_ACTION}.md`
+- REMOTE `coordination/training_state.json`
 
 ## Latest Git Commit
 
-`train: record DEFAULT-LORA-001 blocked by vLLM permission gate`
+`runtime: record GPU-release blocked by stop execution permission`
 
 ## Blocking Issues
 
-1. **VLLM_PERMISSION_GATE = FAIL**  
-   - STOP_PERMISSION = NO（无法向 `yuyong` 进程发信号）  
-   - RESTART_PERMISSION = NO（无法进入 `yuyong` 的 tmux / 以其身份重启）  
-   - `sudo` 需要密码；禁止猜密码/提权绕过  
-2. GPU 仍被 vLLM 占用  
-3. 训练未开始
+1. **STOP_AUTHORIZED_BY_USER = YES / STOP_EXECUTION_PERMISSION = NO**
+2. GPU 未释放 → GPU_READY = NO
+3. TRAINING_PREFLIGHT_READY = NO
 
 ## Exact Next Action
 
-由具备 `yuyong` 或管理员权限的一方任选其一后再继续：
+由具备 `yuyong`/root/admin **已有授权** 的入口执行：
 
-1. 以 `yuyong` 在 tmux `vllm` 内 Ctrl+C / `kill -TERM` 停止 vLLM，或配置免密/授权让 `syy` 执行 stop/restart  
-2. 确认显存释放后执行 `bash $HOME/codellama-lora/scripts/run_training.sh`  
-3. 训练结束后按 `VLLM_RUNBOOK.local.md` 恢复 vLLM 并验证  
-4. 更新本文件与 `TRAINING_METRICS.json` / `FORMAL_TRAINING_RESULT.md`
+`kill -TERM 2570949`（或 tmux `vllm` 内 Ctrl+C）
+
+确认显存释放与 8000 关闭后，再运行 `run_training.sh`。
 
 ## Do Not Do
 
-- 在权限门禁通过前停止 vLLM 或开始训练  
-- 不得猜密码、改 sudoers、提权绕过  
-- 不得改冻结训练参数后重跑  
-- 不得把私有 runbook / 凭据 push GitHub  
+- 不得猜密码 / 提权 / kill -9 / 训练  
+- 不得删除 vLLM 恢复信息  
+- 不得修改冻结训练参数  
