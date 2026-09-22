@@ -1,15 +1,21 @@
 # NEXT_ACTION
 
 Updated At: 2026-09-22  
-Current Phase: **VLLM Lifecycle / GPU Resource Preparation**
+Current Phase: **BLOCKED — VLLM Permission Gate**
 
-Next Action（顺序执行）：
+FORMAL-TRAIN-001 已执行 preflight，但 **VLLM_PERMISSION_GATE = FAIL**：
 
-1. Commander 审核 vLLM stop/restart 方案（见私有 `VLLM_RUNBOOK.local.md`）
-2. 停止 vLLM（Graceful Stop，禁止默认 `kill -9`）
-3. 确认 A6000 显存释放（`nvidia-smi`）
-4. 运行 `bash $HOME/codellama-lora/scripts/run_training.sh`（DEFAULT-LORA-001）
-5. 训练结束后恢复 vLLM 并执行 POST_RESTART_VALIDATION
-6. 更新 `LAST_HANDOFF.md` / `PROJECT_STATE.md`，确认 `TRAINING_METRICS.json`
+- `syy` 不能向 `yuyong` 的 vLLM 发送信号（PERMISSION_DENIED）
+- `sudo` 需要密码，禁止猜测
+- 因此 **未停止 vLLM、未开始训练**
 
-步骤 2 与 4 需 Commander 明确授权后执行。
+Next Action：
+
+1. 提供可执行 stop/restart 的权限（以 `yuyong` 操作，或为 `syy` 配置明确授权且不依赖口令猜测）
+2. 重新跑权限门禁：STOP_PERMISSION=YES 且 RESTART_PERMISSION=YES
+3. 停止 vLLM → 确认 A6000 显存释放
+4. `bash $HOME/codellama-lora/scripts/run_training.sh`
+5. 训练后恢复 vLLM + POST_RESTART_VALIDATION
+6. 产出 `FORMAL_TRAINING_RESULT.md` / `TRAINING_METRICS.json` 并更新交接
+
+训练侧脚本（launcher / monitor / collector）已就绪，可在门禁通过后直接开跑。

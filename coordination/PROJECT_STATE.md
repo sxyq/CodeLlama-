@@ -5,7 +5,7 @@
 | 项 | 值 |
 |---|---|
 | Experiment ID | DEFAULT-LORA-001 |
-| 当前阶段 | VLLM LIFECYCLE / HANDOFF READY |
+| 当前阶段 | **VLLM PERMISSION GATE — BLOCKED**（FORMAL-TRAIN-001） |
 | Framework | LLaMA-Factory `0.9.6.dev0` @ `97b32d3133b501432141a82949d5c7bc4d94f23a` |
 | Method | LoRA SFT |
 | Objective | 全量 1455 条微调 + 训练指标记录（无 benchmark / test / 对比） |
@@ -48,7 +48,7 @@ Optimizer steps = 273
 
 | 项 | 值 |
 |---|---|
-| TRAINING_STARTED | NO |
+| TRAINING_STARTED | NO（权限门禁 FAIL，未开训） |
 | GPU | 1×RTX A6000，vLLM 占用约 43662 MiB，空闲约 4574 MiB |
 | GPU_RECLAIMABLE | YES |
 | vLLM | RUNNING，model=CodeLlama-13b-Instruct-hf，port=8000，owner=`yuyong` |
@@ -68,3 +68,6 @@ GPU_CURRENTLY_OCCUPIED = YES
 GPU_RECLAIMABLE = YES
 TRAINING_STARTED = NO
 ```
+
+
+FORMAL-TRAIN-001: VLLM_PERMISSION_GATE=FAIL；STOP/RESTART_PERMISSION=NO；详见 LAST_HANDOFF.md。
