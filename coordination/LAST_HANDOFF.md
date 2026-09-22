@@ -1,6 +1,6 @@
 # Last Agent Handoff
 
-Updated At: 2026-09-22T22:45:00+08:00
+Updated At: 2026-09-22T22:50:00+08:00
 Last Task ID: GPU-RELEASE-SUDO-001
 Status: COMPLETED
 
@@ -15,9 +15,6 @@ GPU_READY = YES
 ## Current vLLM State
 STOPPED
 
-## Files Changed
-reports/SERVER_PRETRAIN_AUDIT.md, reports/CURRENT_STATUS.md, coordination/*, REMOTE training_state.json
-
 ## Latest Git Commit
 runtime: release vLLM with authorized sudo access
 
@@ -25,7 +22,7 @@ runtime: release vLLM with authorized sudo access
 无
 
 ## Exact Next Action
-bash /Users/sunyiyang/codellama-lora/scripts/run_training.sh；训练后恢复 vLLM
+bash $HOME/codellama-lora/scripts/run_training.sh；训练后恢复 vLLM
 
 ## Do Not Do
 不得改冻结参数；不得把口令写入文件；训练前不要恢复 vLLM
