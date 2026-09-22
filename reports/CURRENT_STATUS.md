@@ -1,11 +1,11 @@
 # CodeLlama LoRA 微调项目——当前状态
 
-任务编号：GPU-RELEASE-SUDO-001
+任务编号：GPU-RELEASE-SUDO-001  
 更新时间：2026-09-22
 
 | 项目 | 事实 |
 |---|---|
-| Current Phase | GPU RELEASED / TRAINING PREFLIGHT READY |
+| Current Phase | **GPU RELEASED / TRAINING PREFLIGHT READY** |
 | VLLM_STOPPED | YES |
 | PORT_8000_RELEASED | YES |
 | GPU_READY | YES |
@@ -15,4 +15,4 @@
 | OUTPUT_DIR_CLEAN | YES |
 | VRAM released | YES（free 48242 MiB） |
 
-停止：sudo kill -TERM（PID 2570949）。下一步：DEFAULT-LORA-001 训练，完成后恢复 vLLM。
+停止：`sudo kill -TERM`（PID 2570949）。下一步：DEFAULT-LORA-001 训练，完成后恢复 vLLM。
