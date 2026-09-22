@@ -1,0 +1,18 @@
+{
+  "codellama_asm_pseudo_to_cpp": {
+    "file_name": "Fine-Tuning.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "observation_tag": "observation",
+      "function_tag": "function_call",
+      "system_tag": "system"
+    }
+  }
+}
