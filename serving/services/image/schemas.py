@@ -36,3 +36,17 @@ class StatusResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     error: dict
+
+
+class EditImage(BaseModel):
+    path: str
+    width: int
+    height: int
+
+
+class EditResponse(BaseModel):
+    created: int
+    model: str = "Qwen-Image-2.1"
+    data: list[EditImage]
+    load_seconds: float | None = None
+    inference_seconds: float | None = None

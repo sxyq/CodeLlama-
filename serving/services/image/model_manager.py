@@ -177,6 +177,38 @@ class ModelManager:
             out.append(buf.getvalue())
         return out
 
+    def edit(self, image, prompt: str, negative_prompt: str | None = None,
+             steps: int | None = None, seed: int | None = None,
+             width: int | None = None, height: int | None = None):
+        """Image-to-image edit via QwenImage21Pipeline(image=...).
+
+        Official model-card path; only passes parameters that the current
+        pipeline signature really supports (no mask / no strength).
+        """
+        import io
+        import torch
+        self.ensure_loaded()
+        kwargs: dict = dict(prompt=prompt, image=image)
+        if negative_prompt is not None:
+            kwargs["negative_prompt"] = negative_prompt
+        if steps:
+            kwargs["num_inference_steps"] = steps
+        if seed is not None:
+            kwargs["generator"] = torch.Generator(device="cpu").manual_seed(seed)
+        if width and height:
+            kwargs["width"] = width
+            kwargs["height"] = height
+        t0 = time.time()
+        result = self._pipeline(**kwargs)
+        self.last_used = time.time()
+        elapsed = time.time() - t0
+        out = []
+        for img in result.images:
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            out.append((buf.getvalue(), img.width, img.height))
+        return out, elapsed
+
     def unload(self) -> bool:
         with self._lock:
             if self._pipeline is None:

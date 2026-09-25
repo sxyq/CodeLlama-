@@ -55,6 +55,7 @@ bash $HOME/codellama-lora/scripts/run_training.sh
 |---|---|
 | 统一 Serving 目录 | `$HOME/ai-serving/`（configs / services / scripts / state / logs / env） |
 | Image 服务 | port **8011**（FastAPI，lazy load，idle 600s；启动：`env/image/bin/python -m uvicorn server:app --host 0.0.0.0 --port 8011`，cwd=`services/image`） |
+| Image API 端点 | `GET /health` `GET /status` `POST /v1/images/generations` **`POST /v1/images/edits`（multipart 图生图，无 mask/strength）** `POST /unload` |
 | Zrald 文本服务 | port **8010**（llama.cpp 管理器，ctx 32768，按需启动 8012 后端，idle 600s SIGTERM；启动：`python3 $HOME/ai-serving/services/zrald/zrald_lease_manager.py`） |
 | Ollama Zrald duplicate | 已于 2026-09-26 E2E 验证后删除（`ollama rm qwen3.8-27b-zrald-accuracy`，回收≈16GB；/data 源 GGUF 未动） |
 | 统一 GPU lease | `$HOME/ai-serving/state/gpu.lock`（flock 原子锁，Image 与 Zrald 共用；Ollama 直连客户端不受约束） |
