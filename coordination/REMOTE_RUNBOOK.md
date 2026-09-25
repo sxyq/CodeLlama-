@@ -43,13 +43,34 @@ bash $HOME/codellama-lora/scripts/run_training.sh
 
 ## vLLM 生命周期（公开摘要）
 
-- 当前模型由 vLLM 托管（推理/托管服务）
+- **当前状态（2026-09-25，UNIFIED-MODEL-DEPLOY-001）：vLLM 已停止，port 8000 CLOSED**（SIGTERM 干净退出，配置未改）
+- 历史：由 tmux session `vllm` 托管 CodeLlama-13b（`qwen3-5.yaml`，port 8000）
+- 停止/恢复命令细节：`coordination/VLLM_RUNBOOK.local.md`（本地私有）
+- AUTO_RESTART = NO；恢复需 Commander 授权
 - LoRA 训练 **不需要** vLLM（LLaMA-Factory + PyTorch 直接读基础模型）
-- 训练前需释放 vLLM 显存；训练后需恢复服务
-- 管理方式：tmux session `vllm`（细节见私有 runbook）
-- stop/restart 具体命令与验证清单：仅本地 `coordination/VLLM_RUNBOOK.local.md`（历史方案；训练后已恢复，**当前勿再 stop/restart**）
-- AUTO_RESTART = NO
-- FINAL-PROJECT-CLOSEOUT-001 核验：health=200，models=OK；当前实例由 syy 启动、yuyong venv PATH/PYTHONPATH、`qwen3-5.yaml`
+
+## AI Serving（2026-09-25 起）
+
+| 对象 | 位置/端口 |
+|---|---|
+| 统一 Serving 目录 | `$HOME/ai-serving/`（configs / services / scripts / state / logs / env） |
+| Image 服务 | port **8011**（FastAPI，lazy load，idle 600s；启动：`env/image/bin/python -m uvicorn server:app --host 0.0.0.0 --port 8011`，cwd=`services/image`） |
+| Zrald 文本服务 | port **8010**（llama.cpp 管理器，ctx 32768，按需启动 8012 后端，idle 600s SIGTERM；启动：`python3 $HOME/ai-serving/services/zrald/zrald_lease_manager.py`） |
+| Ollama Zrald duplicate | 已于 2026-09-26 E2E 验证后删除（`ollama rm qwen3.8-27b-zrald-accuracy`，回收≈16GB；/data 源 GGUF 未动） |
+| 统一 GPU lease | `$HOME/ai-serving/state/gpu.lock`（flock 原子锁，Image 与 Zrald 共用；Ollama 直连客户端不受约束） |
+| Image 模型 | `/data/vllm/ImageModel/Qwen-Image-2.1`（diffusers，local_files_only） |
+| Zrald GGUF | `/data/vllm/Zrald-Qwen3.8-27B-v2/zraldqwen3.8-accuracy.gguf`（已导入 Ollama alias `qwen3.8-27b-zrald-accuracy`；**推理暂受引擎限制**） |
+| Ollama | port 11434，systemd `ollama.service`，internal store 由 Ollama 自管 |
+| Open WebUI | port 3000 |
+
+常用只读核验：
+
+```bash
+curl -sS http://127.0.0.1:11434/api/tags
+curl -sS http://127.0.0.1:8011/health
+curl -sS http://127.0.0.1:8011/status
+nvidia-smi
+```
 
 ## 禁止写入本文
 

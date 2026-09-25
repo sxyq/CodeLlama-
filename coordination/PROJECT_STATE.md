@@ -1,40 +1,21 @@
 # PROJECT_STATE
 
-更新时间：2026-09-23  
-Task: FINAL-PROJECT-CLOSEOUT-001
+更新时间：2026-09-26  
+Task: MODEL-DYNAMIC-LOAD-E2E-VALIDATION-001
 
 | 项 | 值 |
 |---|---|
 | Experiment ID | DEFAULT-LORA-001 |
-| 当前阶段 | EXPERIMENT COMPLETED / ARCHIVED |
-| EXPERIMENT_COMPLETED | YES |
-| TRAINING_STATUS | SUCCESS |
-| TRAINING_COMPLETED | YES |
-| Epochs / Global Steps | 3.0 · 273 / 273 |
-| Total Training Tokens | 5,024,709 |
-| Wall Seconds | 8,989 |
-| Trainer Runtime | 8,905 |
-| ARTIFACT_INVENTORY_COMPLETE | YES |
-| LOCAL_ARCHIVE_COMPLETE | YES |
-| GITHUB_ARCHIVE_COMPLETE | YES |
-| ADAPTER_INTEGRITY | PASS |
-| Git LFS | AVAILABLE / USED / PASS |
-| Adapter GitHub method | GIT-LFS |
-| Checkpoint GitHub method | GIT-LFS |
-| VLLM_RESTORED | YES |
-| VLLM_OPERATIONAL | YES |
-| VLLM_HEALTH | 200 |
-| VLLM_MODELS_OK | YES |
-| Served model | codellama-13b-instruct-hf |
+| 当前阶段 | E2E VALIDATION COMPLETE（待 Commander 审阅 + Git 执行结果） |
+| VLLM_RUNNING | NO（8000 CLOSED，未恢复） |
+| ZRALD_BACKEND | LLAMA_CPP（:8010 管理器 →8012，ctx 32768，idle 600） |
+| ZRALD_DYNAMIC_LOAD / UNLOAD | PASS / PASS（cold 8.9s、warm 1.09s、decode ≈35 t/s、idle60 释放→600 已恢复） |
+| OLLAMA_E2E | PASS（10/10 现存模型：6 chat +3 embed 全 PASS，reranker=API_NOT_AVAILABLE，串行 load/test/unload 全部 GPU 回650） |
+| OLLAMA_DUPLICATE_REMOVED | YES（qwen3.8-27b-zrald-accuracy 已删；RECOVERED≈16.46GB；/data 源文件 SHA 复验 MATCH；余10模型全在） |
+| IMAGE_E2E | PASS（lazy 1.34s / gen 59.95s / 峰34,726MiB / 示意图 e2e-validation PNG 2048² 有效 / unload+锁释放） |
+| GPU_LOCK | 双向 PASS（Zrald→Image、Image→Zrald 均503 lease-held） |
+| OLLAMA_RACE_OBSERVED | YES（LAN CLIENT_IP_REDACTED embed 阻塞冷测1次；成功推理窗口无干扰无 OOM；未阻止外部客户端） |
+| OPENWEBUI_REQUIRED | NO（:3000 未动） |
 | BLOCKING_ISSUE | NONE |
-| Total artifact files | 54 |
-| Total artifact size | 510850913 bytes |
-| Adapter SHA256 | 191d6e982ad91a8750c5b2f51a42ca36b9f94a74dec1d3155dd0b2c2ab1f9ac9 |
-| Train commit | c5afce6 train: complete DEFAULT-LORA-001 formal LoRA run |
-| Archive commit | 0ff433d archive: preserve DEFAULT-LORA-001 artifacts and restore vLLM |
-| Docs commits | 04bd8f6 · d268820 |
-| Local archive | artifacts/DEFAULT-LORA-001 |
-| Manifest | reports/ARTIFACT_MANIFEST.md + .json |
-| Next Action | NONE — WAIT FOR USER REQUEST |
-| vLLM owner | 当前实例 syy 启动（yuyong venv PATH/PYTHONPATH + qwen3-5.yaml）；owner 归还属独立运维，非本实验 blocker |
-| vLLM start method | 当前账户 syy + 系统 python3.12 + yuyong venv PYTHONPATH/PATH（原 sudo -u yuyong 路径需密码） |
+| Git | 见 LAST_HANDOFF（本轮执行 commit/push，结果以其为准） |
+| Next Action | WAIT FOR COMMANDER REVIEW |

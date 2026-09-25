@@ -1,0 +1,41 @@
+{
+  "models": {
+    "zrald-qwen3.8-27b-accuracy": {
+      "type": "llm",
+      "backend": "ollama",
+      "source": "Zrald/Zrald-qwen3.8-27b-v2",
+      "revision": "34d2b18a06239df60a850db6799879c3e2da9a94",
+      "path": "/data/vllm/Zrald-Qwen3.8-27B-v2/zraldqwen3.8-accuracy.gguf",
+      "filename": "zraldqwen3.8-accuracy.gguf",
+      "size_bytes": 16464440224,
+      "sha256": "322e194ff79741c7baa497c240f677f54b201b0efab44ca8e50f122b39123482",
+      "gguf": {"version": 3, "architecture": "qwen35", "context_length": 262144, "tensor_count": 866, "file_type": 15},
+      "alias_planned": "qwen3.8-27b-zrald-accuracy",
+      "lazy_load": true,
+      "downloaded": true,
+      "verified": true,
+      "deployed": false
+    },
+    "qwen-image-2.1": {
+      "type": "image",
+      "backend": "diffusers",
+      "source": "Qwen/Qwen-Image-2.1",
+      "path": "/data/vllm/ImageModel/Qwen-Image-2.1",
+      "size_bytes": 33134789599,
+      "file_count": 29,
+      "pipeline": "QwenImage21Pipeline",
+      "download_source": "MODELSCOPE",
+      "lazy_load": true,
+      "downloaded": true,
+      "verified": true,
+      "deployed": false
+    },
+    "codellama-vllm-current": {
+      "type": "llm",
+      "backend": "vllm",
+      "config_root": "/home/yuyong/vllm",
+      "path": "/data/vllm/CodeLlama-13b-Instruct-hf",
+      "running": true
+    }
+  }
+}

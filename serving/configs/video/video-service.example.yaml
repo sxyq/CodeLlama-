@@ -1,0 +1,13 @@
+model:
+  path: TBD
+
+runtime:
+  lazy_load: true
+
+service:
+  port: TBD
+  idle_timeout_seconds: 600
+
+gpu:
+  exclusive_large_model: true
+  check_ollama_before_load: true

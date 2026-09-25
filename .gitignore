@@ -8,3 +8,14 @@ id_ecdsa*
 Fine-Tuning*.json
 data/Fine-Tuning.json
 reports/.DS_Store
+
+# serving artifacts (never commit)
+serving/env/
+serving/logs/
+serving/runtime/
+**/__pycache__/
+**/gpu.lock
+*.gguf
+*.safetensors
+generated/
+logs/

@@ -1,0 +1,11 @@
+{
+  "staging_task": "UNIFIED-MODEL-STAGING-001",
+  "stage": "staging",
+  "services": {
+    "vllm":   {"port": 8000,  "state": "RUNNING", "modify": "FORBIDDEN_THIS_STAGE"},
+    "ollama": {"port": 11434, "state": "RUNNING", "modify": "FORBIDDEN_THIS_STAGE"},
+    "open-webui": {"port": 3000, "state": "RUNNING", "modify": "FORBIDDEN_THIS_STAGE"},
+    "image":  {"port": 8011,  "state": "STAGED_NOT_STARTED"}
+  },
+  "video": {"state": "RESERVED_ONLY", "model": "NONE"}
+}

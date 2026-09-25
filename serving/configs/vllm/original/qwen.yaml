@@ -1,0 +1,33 @@
+# 1. 基础模型
+model: "/data/vllm/Qwen2.5-Coder-7B-Instruct"
+served_model_name: "qwen2.5-coder-7b-instruct"
+
+# 2. 并行策略
+seed: 42                       # 固定随机种子
+
+# 3. 显存与 batch 控制
+gpu_memory_utilization: 0.92   # 留 10 % 给 CUDA kernel 临时分配
+max_model_len: 32768           # 模型上下文 32K，按需求调小/调大
+# max_model_len: 16384
+max_num_seqs: 256              # 同时推理的 sequence 上限
+max_num_batched_tokens: 32768  # 单次 forward 最大 token 数，一般 = max_model_len
+
+# 4. 量化（可选）
+# 若想再压一点显存，可打开：
+# quantization: "fp8"        # 需要 Hopper 或更新架构，4090 建议保持默认 None
+dtype: "auto"                  # vLLM 会自动检测为 float16
+
+# 5. 推理加速
+# 4090 支持 FlashAttention2
+# enable_prefix_caching: true    # 前缀缓存，提升多轮对话命中率
+# enable_chunked_prefill: true   # 降低首次 token 延迟
+
+# 6. 服务接口
+host: "0.0.0.0"
+port: 8000
+trust_remote_code: true        # Qwen 系列需要
+
+# 7. 日志 & 监控
+disable_log_stats: false
+max_log_len: 1000
+

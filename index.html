@@ -1,0 +1,59 @@
+<!-- AI生成 -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UNIFIED-MODEL-STAGING-001 · Staging Dashboard</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<p data-aigc-mark="1" style="margin:0 0 8px;font-size:10px;line-height:1.3;color:#6b6560;font-weight:400;">AI生成</p>
+
+<header>
+  <h1>UNIFIED-MODEL-STAGING-001</h1>
+  <p class="sub">统一模型 Serving 预部署看板 · 只读汇总 · 数据来自 staging 终态快照</p>
+</header>
+
+<main>
+  <section class="grid" id="services">
+    <h2>服务地图</h2>
+    <div class="cards" id="service-cards"><!-- 由 app.js 渲染 --></div>
+  </section>
+
+  <section class="grid">
+    <h2>下载与就绪状态</h2>
+    <div class="cards" id="download-cards"></div>
+  </section>
+
+  <section class="grid">
+    <h2>目录与登记</h2>
+    <div class="cols">
+      <div>
+        <h3>模型存储 /data/vllm</h3>
+        <ul id="storage-list"></ul>
+      </div>
+      <div>
+        <h3>Serving 配置 /home/syy/ai-serving</h3>
+        <ul id="serving-list"></ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="grid">
+    <h2>本轮明确未执行</h2>
+    <ul class="notlist" id="notlist"></ul>
+  </section>
+
+  <section class="grid">
+    <h2>GGUF 元数据（Zrald Accuracy）</h2>
+    <table id="gguf-table"></table>
+  </section>
+</main>
+
+<footer>
+  <p>报告：<code>reports/UNIFIED_MODEL_STAGING.md</code> · 密码/凭据不入本页</p>
+</footer>
+<script src="app.js"></script>
+</body>
+</html>
