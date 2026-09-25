@@ -1,9 +1,10 @@
 /* Staging dashboard data — final snapshot of UNIFIED-MODEL-STAGING-001 */
 const SERVICES = [
-  { port: "8000",  name: "vLLM · codellama-13b", badge: "RUNNING（未改动）", cls: "ok",   meta: "PID 3068143/3068373 · health 200" },
-  { port: "11434", name: "Ollama 0.20.7",        badge: "RUNNING（未重启）", cls: "ok",   meta: "PID 3561 · api/tags 200" },
-  { port: "3000",  name: "Open WebUI",           badge: "RUNNING（未改动）", cls: "ok",   meta: "监听确认" },
-  { port: "8011",  name: "Image Service",        badge: "STAGED · 未启动",  cls: "warn", meta: "代码/配置就绪 · venv 未装" },
+  { port: "8000",  name: "vLLM · codellama-13b", badge: "STOPPED", cls: "stop",  meta: "8000 CLOSED · 未恢复" },
+  { port: "8010",  name: "Zrald · llama.cpp",    badge: "RUNNING · 动态加载", cls: "ok", meta: "lease manager · ctx 32768 · idle 600s" },
+  { port: "11434", name: "Ollama 0.20.7",        badge: "RUNNING · 10 模型", cls: "ok",  meta: "E2E 10/10 PASS · duplicate 已删" },
+  { port: "8011",  name: "Image Service",        badge: "RUNNING · lazy load", cls: "ok", meta: "E2E 生成 PASS · idle 600s" },
+  { port: "3000",  name: "Open WebUI",           badge: "不被依赖", cls: "off",  meta: "OPEN_WEBUI_REQUIRED = NO" },
 ];
 
 const DOWNLOADS = [
@@ -36,11 +37,11 @@ const SERVING = [
 ];
 
 const NOT_DONE = [
-  "vLLM 未停止 / 未 kill / 未重启 / YAML 未改",
-  "ollama create 未执行 · Ollama 未重启 · 既有模型未删",
-  "Qwen-Image 未加载 · Image 服务未启动 · 零推理请求",
-  "venv 未安装 · 视频模型未下载 · 8011 未监听",
-  "Git 未 commit / 未 push · 凭据未落盘",
+  "vLLM YAML/CUDA/Clash/网络/Open WebUI 未改动",
+  "Ollama 未升级未重启（仅 rm 已确认损坏的 duplicate）",
+  "未重新下载/重量化任何模型 · 凭据未入 Git",
+  "GPU lock 双向互斥实测 PASS · LAN 外部 embed 竞争已记录",
+  "Git: secret scan PASS → commit 6919738 → push main",
 ];
 
 const GGUF = [
