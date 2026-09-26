@@ -1,18 +1,19 @@
 """Qwen-Image-2.1 lifecycle: lazy load + GPU lock + idle unload.
 
-Design rules (staging contract):
+Design rules (staging rules):
 - Import of this module MUST NOT load the model or touch the GPU.
 - torch / diffusers are imported lazily inside load().
 - Before loading: check Ollama /api/ps; if a large model occupies GPU
   return 503 GPU_BUSY (never kill Ollama runners).
 - Cross-service GPU lease: state/gpu.lock via OS-level flock (atomic, no create-then-check race).
-- Idle > IDLE_TIMEOUT seconds -> automatic unload.
+- Idle > IDLE_TIMEOUT seconds -> automatic unload (never while inference is running).
 """
 from __future__ import annotations
 
 import fcntl
 import gc
 import json
+import math
 import os
 import threading
 import time
@@ -24,6 +25,10 @@ GPU_LOCK_PATH = Path("/home/syy/ai-serving/state/gpu.lock")
 OLLAMA_PS_URL = "http://127.0.0.1:11434/api/ps"
 IDLE_TIMEOUT = int(os.environ.get("IMAGE_IDLE_TIMEOUT", "600"))  # seconds, default 600
 OLLAMA_VRAM_BUSY_BYTES = 1_000_000_000  # size_vram above this = GPU busy
+# Qwen-Image-2.1 samples guidance-free by default (true_cfg_scale=1); a
+# non-empty negative prompt only takes effect with CFG enabled. 4.0 matches
+# the Qwen-Image family's guidance convention.
+TRUE_CFG_SCALE = 4.0
 
 
 class GpuBusy(Exception):
@@ -39,6 +44,7 @@ class ModelManager:
         self._watcher_started = False
         self.last_load_seconds: float | None = None
         self._lease_fd: int | None = None
+        self._inference_depth = 0  # >0 while a pipeline call is running
 
     # ---------- GPU occupancy ----------
     @staticmethod
@@ -148,6 +154,13 @@ class ModelManager:
             print(f"[model_manager] loaded in {self.last_load_seconds:.2f}s", flush=True)
             self._start_watcher()
 
+    @staticmethod
+    def _cfg_kwargs(negative_prompt: str | None) -> dict:
+        """negative_prompt only works when true_cfg_scale > 1 (pipeline rule)."""
+        if negative_prompt:
+            return {"negative_prompt": negative_prompt, "true_cfg_scale": TRUE_CFG_SCALE}
+        return {}
+
     def generate(self, prompt: str, n: int, size: str,
                  negative_prompt: str | None = None,
                  seed: int | None = None,
@@ -159,15 +172,20 @@ class ModelManager:
         if seed is not None:
             generator = torch.Generator(device="cpu").manual_seed(seed)
         kwargs: dict = dict(
-            prompt=prompt, negative_prompt=negative_prompt,
+            prompt=prompt,
             width=width, height=height, num_images_per_prompt=n,
+            **self._cfg_kwargs(negative_prompt),
         )
         if steps:
             kwargs["num_inference_steps"] = steps
         if generator is not None:
             kwargs["generator"] = generator
-        result = self._pipeline(**kwargs)
-        self.last_used = time.time()
+        self._inference_depth += 1
+        try:
+            result = self._pipeline(**kwargs)
+            self.last_used = time.time()
+        finally:
+            self._inference_depth -= 1
         import io
         import PIL.Image  # noqa: F401  (pipeline returns PIL images)
         out: list[bytes] = []
@@ -184,26 +202,38 @@ class ModelManager:
 
         Official model-card path; only passes parameters that the current
         pipeline signature really supports (no mask / no strength).
+
+        Output size is kept exactly at (width, height): the pipeline floors
+        dims to a multiple of 16, so we ceil up for it and crop back.
         """
         import io
         import torch
         self.ensure_loaded()
-        kwargs: dict = dict(prompt=prompt, image=image)
-        if negative_prompt is not None:
-            kwargs["negative_prompt"] = negative_prompt
+        target_w = width or image.width
+        target_h = height or image.height
+        pipe_w = math.ceil(target_w / 16) * 16
+        pipe_h = math.ceil(target_h / 16) * 16
+        kwargs: dict = dict(
+            prompt=prompt, image=image,
+            width=pipe_w, height=pipe_h,
+            **self._cfg_kwargs(negative_prompt),
+        )
         if steps:
             kwargs["num_inference_steps"] = steps
         if seed is not None:
             kwargs["generator"] = torch.Generator(device="cpu").manual_seed(seed)
-        if width and height:
-            kwargs["width"] = width
-            kwargs["height"] = height
         t0 = time.time()
-        result = self._pipeline(**kwargs)
-        self.last_used = time.time()
+        self._inference_depth += 1
+        try:
+            result = self._pipeline(**kwargs)
+            self.last_used = time.time()
+        finally:
+            self._inference_depth -= 1
         elapsed = time.time() - t0
         out = []
         for img in result.images:
+            if img.size != (target_w, target_h):
+                img = img.crop((0, 0, target_w, target_h))
             buf = io.BytesIO()
             img.save(buf, format="PNG")
             out.append((buf.getvalue(), img.width, img.height))
@@ -236,6 +266,9 @@ class ModelManager:
         def _loop() -> None:
             while True:
                 time.sleep(15)
+                # never unload mid-inference (long runs can exceed IDLE_TIMEOUT)
+                if self._inference_depth > 0:
+                    continue
                 if (self.loaded and self.last_used
                         and time.time() - self.last_used > IDLE_TIMEOUT):
                     self.unload()

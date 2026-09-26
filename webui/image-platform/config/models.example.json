@@ -1,0 +1,15 @@
+{
+  "models": [
+    {
+      "id": "qwen-image-2-1",
+      "display_name": "Qwen-Image-2.1",
+      "api_base": "http://SERVER_IP:8011/v1",
+      "generation_endpoint": "/v1/images/generations",
+      "edit_endpoint": "/v1/images/edits",
+      "supports_generation": true,
+      "supports_edit": true,
+      "max_width": 2048,
+      "max_height": 2048
+    }
+  ]
+}

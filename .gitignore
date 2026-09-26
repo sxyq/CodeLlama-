@@ -13,9 +13,21 @@ reports/.DS_Store
 serving/env/
 serving/logs/
 serving/runtime/
+serving/tmp/
 **/__pycache__/
 **/gpu.lock
 *.gguf
 *.safetensors
 generated/
 logs/
+
+# webui artifacts (never commit)
+webui/image-platform/upstream/node_modules/
+webui/image-platform/upstream/.git/
+webui/image-platform/upstream/dist/
+webui/image-platform/dist/
+webui/image-platform/tmp/
+webui/image-platform/config/preset-config.json
+webui/image-platform/config/models.json
+*.local.env
+.DS_Store
