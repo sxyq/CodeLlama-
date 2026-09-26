@@ -50,6 +50,8 @@ class StatusResponse(BaseModel):
     last_used_age_seconds: float | None
     gpu_lock: str | None
     queue: QueueStats
+    # service capability (limits/presets/features) — single source for UI profiles
+    capability: dict
 
 
 class ErrorResponse(BaseModel):

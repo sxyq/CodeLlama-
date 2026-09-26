@@ -1,13 +1,20 @@
 import { useEffect, useState } from 'react'
 import { getActiveApiProfile } from '../../lib/apiProfiles'
+import { applyServerCapability } from '../../lib/modelProfile'
 import { useStore } from '../../store'
 
 interface QueueStatus {
   model_loaded: boolean
   queue: { running: number; pending: number; max_pending: number }
+  /** 后端服务能力（capability.as_dict()），用于覆盖 lib/modelProfile.ts 的静态镜像 */
+  capability?: unknown
 }
 
-/** 轮询后端 /status 展示队列与模型载入状态 */
+/**
+ * 轮询后端 /status 展示队列与模型载入状态。
+ * 同时承担能力同步（任务书 §22）：成功取到 capability 时覆盖静态 Profile，
+ * 失败时静态值兜底、UI 不受阻塞；机制说明见 lib/modelProfile.ts 头注释。
+ */
 export default function QueueStatusBadge() {
   const baseUrl = useStore((s) => getActiveApiProfile(s.settings).baseUrl)
   const [status, setStatus] = useState<QueueStatus | null>(null)
@@ -24,7 +31,10 @@ export default function QueueStatusBadge() {
         const res = await fetch(statusUrl, { cache: 'no-store', signal: controller.signal })
         if (!res.ok) throw new Error(String(res.status))
         const data = await res.json() as QueueStatus
-        if (!cancelled) setStatus(data)
+        if (!cancelled) {
+          setStatus(data)
+          if (data.capability) applyServerCapability(data.capability)
+        }
       } catch (err) {
         if (!cancelled && !(err instanceof DOMException && err.name === 'AbortError')) setStatus(null)
       }

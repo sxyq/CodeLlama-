@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import base64
 import io
+import math
 import os
 import time
 from contextlib import asynccontextmanager
@@ -23,6 +24,15 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+import capability
+from capability import (
+    MAX_ASPECT_RATIO,
+    MAX_EDGE,
+    MAX_PIXELS,
+    MAX_REFERENCE_IMAGES,
+    MIN_EDGE,
+    MULTIPLE_OF,
+)
 from model_manager import MANAGER, GpuBusy, IDLE_TIMEOUT, InferenceBusy
 from queue_manager import IMAGE_QUEUE, QueueFull, QueueTimeout
 from schemas import (
@@ -92,7 +102,7 @@ def _bad(code: str, message: str, status: int = 400) -> HTTPException:
 
 
 def _parse_size(size: str | None, default: tuple[int, int]) -> tuple[int, int]:
-    """Parse "WxH" (also X/×); "auto"/empty -> default. Enforce 512-2048 and /16."""
+    """Parse "WxH" (also X/×); "auto"/empty -> default. Enforce capability limits."""
     raw = (size or "").strip().lower()
     if raw in ("", "auto"):
         return default
@@ -111,10 +121,31 @@ def _parse_size(size: str | None, default: tuple[int, int]) -> tuple[int, int]:
 
 
 def _check_dims(w: int, h: int) -> None:
-    if not (512 <= w <= 2048 and 512 <= h <= 2048):
-        raise _bad("INVALID_SIZE", f"width/height must be within 512-2048, got {w}x{h}")
-    if w % 16 or h % 16:
-        raise _bad("INVALID_SIZE", f"width/height must be multiples of 16, got {w}x{h}")
+    if not (MIN_EDGE <= w <= MAX_EDGE and MIN_EDGE <= h <= MAX_EDGE):
+        raise _bad("INVALID_SIZE",
+                   f"width/height must be within {MIN_EDGE}-{MAX_EDGE}, got {w}x{h}")
+    if w * h > MAX_PIXELS:
+        raise _bad("INVALID_SIZE",
+                   f"total pixels must be <= {MAX_PIXELS}, got {w}x{h} ({w * h})")
+    if max(w, h) / min(w, h) > MAX_ASPECT_RATIO:
+        raise _bad("INVALID_SIZE",
+                   f"aspect ratio must be <= {MAX_ASPECT_RATIO}, got {w}x{h}")
+    if w % MULTIPLE_OF or h % MULTIPLE_OF:
+        raise _bad("INVALID_SIZE",
+                   f"width/height must be multiples of {MULTIPLE_OF}, got {w}x{h}")
+
+
+def _clamp_dims(w: int, h: int) -> tuple[int, int]:
+    """Scale oversized keep-original inputs down into the capability envelope."""
+    if w <= 0 or h <= 0:
+        raise _bad("INVALID_IMAGE", f"invalid image dimensions {w}x{h}")
+    if w <= MAX_EDGE and h <= MAX_EDGE and w * h <= MAX_PIXELS:
+        return w, h
+    scale = min(MAX_EDGE / max(w, h), math.sqrt(MAX_PIXELS / float(w * h)))
+    cw, ch = max(MULTIPLE_OF, int(w * scale)), max(MULTIPLE_OF, int(h * scale))
+    if cw * ch > MAX_PIXELS:  # guard float rounding overshoot
+        cw, ch = int(cw * 0.999), int(ch * 0.999)
+    return cw, ch
 
 
 def _check_format(fmt: str | None) -> str:
@@ -151,17 +182,9 @@ def _int_or_none(value) -> int | None:
 
 
 # --- quality -> inference steps (single helper, shared by both endpoints) --
-QUALITY_STEPS = {
-    "fast": 4,
-    "low": 4,
-    "standard": 24,
-    "medium": 24,
-    "auto": 24,
-    "high": 40,
-    "xhigh": 40,  # upstream GPT-image extra levels, treated as >= high
-    "max": 40,
-}
-DEFAULT_STEPS = 24
+# table lives in capability.py (single source of truth with the UI profile)
+QUALITY_STEPS = capability.QUALITY_STEPS
+DEFAULT_STEPS = capability.DEFAULT_STEPS
 
 
 def _resolve_steps(explicit: int | None, quality: str | None) -> int:
@@ -196,6 +219,7 @@ def status() -> StatusResponse:
         last_used_age_seconds=age,
         gpu_lock=lock,
         queue=IMAGE_QUEUE.stats(),
+        capability=capability.as_dict(),
     )
 
 
@@ -273,24 +297,31 @@ async def edits(request: Request) -> EditResponse:
              if hasattr(f, "read")]
     if not files:
         raise _bad("INVALID_IMAGE", "image file is required (field image or image[])")
-    if len(files) > 1:
-        raise _bad("MULTIPLE_IMAGES", "multiple input images are not supported by current model")
+    if len(files) > MAX_REFERENCE_IMAGES:
+        raise _bad("TOO_MANY_REFERENCE_IMAGES",
+                   f"Qwen-Image-2.1 accepts at most {MAX_REFERENCE_IMAGES} reference images",
+                   status=400)
 
-    raw = await files[0].read()
-    if not raw:
-        raise _bad("INVALID_IMAGE", "image file is empty")
-    if len(raw) > 20 * 1024 * 1024:
-        raise _bad("IMAGE_TOO_LARGE", "image exceeds 20MB limit")
-    try:
-        from PIL import Image as PILImage
-        pil = PILImage.open(io.BytesIO(raw))
-        pil.load()
-    except Exception:
-        raise _bad("INVALID_IMAGE", "file is not a readable image (PNG/JPEG/WEBP)")
-    if pil.mode not in ("RGB", "RGBA"):
-        pil = pil.convert("RGB")
+    from PIL import Image as PILImage
+    pils = []
+    for f in files:
+        raw = await f.read()
+        if not raw:
+            raise _bad("INVALID_IMAGE", "image file is empty")
+        if len(raw) > 20 * 1024 * 1024:
+            raise _bad("IMAGE_TOO_LARGE", "image exceeds 20MB limit")
+        try:
+            pil = PILImage.open(io.BytesIO(raw))
+            pil.load()
+        except Exception:
+            raise _bad("INVALID_IMAGE", "file is not a readable image (PNG/JPEG/WEBP)")
+        if pil.mode not in ("RGB", "RGBA"):
+            pil = pil.convert("RGB")
+        pils.append(pil)
+    main = pils[0]  # image 1 = main image; images 2..N = style references
+    images = pils[0] if len(pils) == 1 else pils  # native multi-image list input
 
-    # target output size: explicit width/height > size field > keep original
+    # target output size: explicit width/height > size field > keep original (main)
     width = _int_or_none(form.get("width"))
     height = _int_or_none(form.get("height"))
     size_field = form.get("size")
@@ -299,12 +330,10 @@ async def edits(request: Request) -> EditResponse:
             raise _bad("INVALID_SIZE", "width and height must be given together")
         _check_dims(width, height)
     elif size_field and str(size_field).strip().lower() != "auto":
-        width, height = _parse_size(str(size_field), (pil.width, pil.height))
+        width, height = _parse_size(str(size_field), (main.width, main.height))
     else:
-        width, height = pil.width, pil.height
-        if max(width, height) > 2048:  # GPU safety cap for oversized uploads
-            scale = 2048 / max(width, height)
-            width, height = max(16, round(width * scale)), max(16, round(height * scale))
+        # keep original (clamped into the capability envelope if oversized)
+        width, height = _clamp_dims(main.width, main.height)
 
     fmt = _check_format(str(form.get("output_format") or "png"))
     negative = str(form.get("negative_prompt") or "").strip() or None
@@ -313,8 +342,8 @@ async def edits(request: Request) -> EditResponse:
         raise _bad("INVALID_REQUEST", "num_inference_steps must be within 1-200")
     quality = str(form.get("quality") or "").strip() or None
     steps = _resolve_steps(explicit_steps, quality)
-    print(f"[edit] steps={steps} explicit={explicit_steps} "
-          f"quality={quality} target={width}x{height}", flush=True)
+    print(f"[edit] steps={steps} explicit={explicit_steps} quality={quality} "
+          f"target={width}x{height} refs={len(pils)}", flush=True)
     seed = _int_or_none(form.get("seed"))
 
     was_loaded = MANAGER.loaded
@@ -330,7 +359,7 @@ async def edits(request: Request) -> EditResponse:
         queue_wait = time.time() - t_queue
         try:
             outs, infer_s = MANAGER.edit(
-                image=pil, prompt=prompt, negative_prompt=negative,
+                image=images, prompt=prompt, negative_prompt=negative,
                 steps=steps, seed=seed, width=width, height=height,
             )
         finally:

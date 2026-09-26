@@ -8,6 +8,26 @@ const MIN_PIXELS = 262_144
 const MAX_PIXELS = 4_194_304
 const MAX_1K_PIXELS = 1_572_864
 
+/** 尺寸规则：按模型 Profile 取值（见 lib/modelProfile.ts） */
+export interface SizeRule {
+  minEdge: number
+  maxEdge: number
+  minPixels: number
+  maxPixels: number
+  maxAspectRatio: number
+  multiple: number
+}
+
+/** 通用默认规则 = 现有 gpt-image 行为（512-2048、64 倍数、宽高比 ≤3、262144-4194304 像素） */
+export const DEFAULT_SIZE_RULE: SizeRule = {
+  minEdge: MIN_EDGE,
+  maxEdge: MAX_EDGE,
+  minPixels: MIN_PIXELS,
+  maxPixels: MAX_PIXELS,
+  maxAspectRatio: MAX_ASPECT_RATIO,
+  multiple: SIZE_MULTIPLE,
+}
+
 export type SizeTier = '1K' | '2K'
 type PresetRatio = '1:1' | '3:2' | '2:3' | '16:9' | '9:16' | '4:3' | '3:4' | '21:9'
 
@@ -23,58 +43,90 @@ function ceilToMultiple(value: number, multiple: number) {
   return Math.max(multiple, Math.ceil(value / multiple) * multiple)
 }
 
-function normalizeDimensions(width: number, height: number) {
-  let normalizedWidth = roundToMultiple(width, SIZE_MULTIPLE)
-  let normalizedHeight = roundToMultiple(height, SIZE_MULTIPLE)
+function normalizeDimensions(width: number, height: number, rule: SizeRule = DEFAULT_SIZE_RULE) {
+  const multiple = rule.multiple
+  let normalizedWidth = roundToMultiple(width, multiple)
+  let normalizedHeight = roundToMultiple(height, multiple)
 
   const scaleToFit = (scale: number) => {
-    normalizedWidth = floorToMultiple(normalizedWidth * scale, SIZE_MULTIPLE)
-    normalizedHeight = floorToMultiple(normalizedHeight * scale, SIZE_MULTIPLE)
+    normalizedWidth = floorToMultiple(normalizedWidth * scale, multiple)
+    normalizedHeight = floorToMultiple(normalizedHeight * scale, multiple)
   }
 
   const scaleToFill = (scale: number) => {
-    normalizedWidth = ceilToMultiple(normalizedWidth * scale, SIZE_MULTIPLE)
-    normalizedHeight = ceilToMultiple(normalizedHeight * scale, SIZE_MULTIPLE)
+    normalizedWidth = ceilToMultiple(normalizedWidth * scale, multiple)
+    normalizedHeight = ceilToMultiple(normalizedHeight * scale, multiple)
   }
 
   for (let i = 0; i < 4; i++) {
     const maxEdge = Math.max(normalizedWidth, normalizedHeight)
-    if (maxEdge > MAX_EDGE) {
-      scaleToFit(MAX_EDGE / maxEdge)
+    if (maxEdge > rule.maxEdge) {
+      scaleToFit(rule.maxEdge / maxEdge)
     }
 
-    if (normalizedWidth / normalizedHeight > MAX_ASPECT_RATIO) {
-      normalizedWidth = floorToMultiple(normalizedHeight * MAX_ASPECT_RATIO, SIZE_MULTIPLE)
-    } else if (normalizedHeight / normalizedWidth > MAX_ASPECT_RATIO) {
-      normalizedHeight = floorToMultiple(normalizedWidth * MAX_ASPECT_RATIO, SIZE_MULTIPLE)
+    if (normalizedWidth / normalizedHeight > rule.maxAspectRatio) {
+      normalizedWidth = floorToMultiple(normalizedHeight * rule.maxAspectRatio, multiple)
+    } else if (normalizedHeight / normalizedWidth > rule.maxAspectRatio) {
+      normalizedHeight = floorToMultiple(normalizedWidth * rule.maxAspectRatio, multiple)
     }
 
     const pixels = normalizedWidth * normalizedHeight
-    if (pixels > MAX_PIXELS) {
-      scaleToFit(Math.sqrt(MAX_PIXELS / pixels))
-    } else if (pixels < MIN_PIXELS) {
-      scaleToFill(Math.sqrt(MIN_PIXELS / pixels))
+    if (pixels > rule.maxPixels) {
+      scaleToFit(Math.sqrt(rule.maxPixels / pixels))
+    } else if (pixels < rule.minPixels) {
+      scaleToFill(Math.sqrt(rule.minPixels / pixels))
     }
   }
 
-  // 最后保证短边不低于 MIN_EDGE：等比放大后再重新归一，避免被前面的规则改小
+  // 最后保证短边不低于规则下限：等比放大后再重新归一，避免被前面的规则改小
   const minEdge = Math.min(normalizedWidth, normalizedHeight)
-  if (minEdge < MIN_EDGE) {
-    const scale = MIN_EDGE / minEdge
-    normalizedWidth = ceilToMultiple(normalizedWidth * scale, SIZE_MULTIPLE)
-    normalizedHeight = ceilToMultiple(normalizedHeight * scale, SIZE_MULTIPLE)
+  if (minEdge < rule.minEdge) {
+    const scale = rule.minEdge / minEdge
+    normalizedWidth = ceilToMultiple(normalizedWidth * scale, multiple)
+    normalizedHeight = ceilToMultiple(normalizedHeight * scale, multiple)
   }
 
   return { width: normalizedWidth, height: normalizedHeight }
 }
 
-export function normalizeImageSize(size: string) {
+export function normalizeImageSize(size: string, rule: SizeRule = DEFAULT_SIZE_RULE) {
   const trimmed = size.trim()
   const match = trimmed.match(SIZE_PATTERN)
   if (!match) return trimmed
 
-  const { width, height } = normalizeDimensions(Number(match[1]), Number(match[2]))
+  const { width, height } = normalizeDimensions(Number(match[1]), Number(match[2]), rule)
   return `${width}x${height}`
+}
+
+/**
+ * 按规则逐条校验具体宽高，返回全部不通过项的中文说明（空数组 = 合规）。
+ * 用于 strict 校验模式（如 Qwen-Image-2.1），替代通用的自动规整。
+ */
+export function validateImageSize(width: number, height: number, rule: SizeRule): string[] {
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) {
+    return ['宽和高必须是正整数']
+  }
+
+  const errors: string[] = []
+  if (width < rule.minEdge || width > rule.maxEdge || height < rule.minEdge || height > rule.maxEdge) {
+    errors.push(`宽或高需在 ${rule.minEdge}-${rule.maxEdge}px 范围内（当前 ${width}x${height}）`)
+  }
+
+  const pixels = width * height
+  if (pixels > rule.maxPixels) {
+    errors.push(`总像素不能超过 ${rule.maxPixels}（当前 ${width}x${height} = ${pixels}）`)
+  }
+
+  const ratio = Math.max(width, height) / Math.min(width, height)
+  if (ratio > rule.maxAspectRatio) {
+    errors.push(`宽高比不能超过 ${rule.maxAspectRatio}:1（当前 ${width}:${height} ≈ ${ratio.toFixed(2)}:1）`)
+  }
+
+  if (width % rule.multiple !== 0 || height % rule.multiple !== 0) {
+    errors.push(`宽和高必须是 ${rule.multiple} 的倍数（当前 ${width}x${height}）`)
+  }
+
+  return errors
 }
 
 export function normalizeCodexCliImageSize(size: string) {

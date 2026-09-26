@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { calculateImageSize, normalizeCodexCliImageSize, normalizeImageSize, parseRatio, type SizeTier } from '../lib/size'
+import { calculateImageSize, normalizeCodexCliImageSize, normalizeImageSize, parseRatio, validateImageSize, type SizeTier } from '../lib/size'
+import type { ModelProfile } from '../lib/modelProfile'
 import { usePreventBackgroundScroll } from '../hooks/usePreventBackgroundScroll'
 import ViewportTooltip from './ViewportTooltip'
 
@@ -24,9 +25,11 @@ interface Props {
   onClose: () => void
   allowAuto?: boolean
   codexCli?: boolean
+  /** 当前模型 Profile：决定预设列表与尺寸校验规则 */
+  profile: ModelProfile
 }
 
-type Mode = 'auto' | 'ratio' | 'resolution'
+type Mode = 'auto' | 'ratio' | 'resolution' | 'presets'
 
 function parseSize(size: string) {
   const match = size.match(/^\s*(\d+)\s*[xX×]\s*(\d+)\s*$/)
@@ -46,7 +49,7 @@ function findPresetForSize(size: string) {
   return null
 }
 
-export default function SizePickerModal({ currentSize, onSelect, onClose, allowAuto = true, codexCli = false }: Props) {
+export default function SizePickerModal({ currentSize, onSelect, onClose, allowAuto = true, codexCli = false, profile }: Props) {
   usePreventBackgroundScroll(true)
 
   const modalRef = useRef<HTMLDivElement>(null)
@@ -72,10 +75,26 @@ export default function SizePickerModal({ currentSize, onSelect, onClose, allowA
     mouseDownTargetRef.current = null
   }
 
+  // 登记了官方预设的模型（如 Qwen-Image-2.1）：预设模式替代比例模式，且逐条校验
+  const useOfficialPresets = !codexCli && profile.officialResolutions.length > 0
+  const useStrictValidation = !codexCli && profile.strictSizeValidation
+
+  const findOfficialPreset = (size: string) => {
+    if (!useOfficialPresets) return null
+    const parsed = parseSize(size)
+    if (!parsed) return null
+    const width = Number(parsed.width)
+    const height = Number(parsed.height)
+    return profile.officialResolutions.find((preset) => preset.width === width && preset.height === height) ?? null
+  }
+
+  const officialMatch = findOfficialPreset(currentSize)
   const currentPreset = findPresetForSize(currentSize)
   const currentParsedSize = parseSize(currentSize)
   const [mode, setMode] = useState<Mode>(() => {
-    if (!currentSize || currentSize === 'auto') return allowAuto ? 'auto' : 'ratio'
+    if (!currentSize || currentSize === 'auto') return allowAuto ? 'auto' : (useOfficialPresets ? 'presets' : 'ratio')
+    if (officialMatch) return 'presets'
+    if (useOfficialPresets) return 'resolution'
     if (currentPreset) return 'ratio'
     return 'resolution'
   })
@@ -89,6 +108,12 @@ export default function SizePickerModal({ currentSize, onSelect, onClose, allowA
   const [customW, setCustomW] = useState(currentParsedSize?.width ?? '1024')
   const [customH, setCustomH] = useState(currentParsedSize?.height ?? '1024')
 
+  // Official preset mode state（默认选中当前尺寸；无匹配时选第一项，1024x1024 为快速档）
+  const [presetSize, setPresetSize] = useState(() => {
+    const matched = officialMatch ?? (useOfficialPresets ? profile.officialResolutions[0] : undefined)
+    return matched ? `${matched.width}x${matched.height}` : ''
+  })
+
   const [hintVisible, setHintVisible] = useState(false)
   const hintTimerRef = useRef<number | null>(null)
   const [tierHint, setTierHint] = useState<SizeTier | null>(null)
@@ -99,8 +124,14 @@ export default function SizePickerModal({ currentSize, onSelect, onClose, allowA
     if (tierHintTimerRef.current != null) window.clearTimeout(tierHintTimerRef.current)
   }, [])
 
-  const normalizeSize = codexCli ? normalizeCodexCliImageSize : normalizeImageSize
-  const sizeLimitText = codexCli ? CODEX_CLI_SIZE_LIMIT_TEXT : SIZE_LIMIT_TEXT
+  const normalizeSize = codexCli
+    ? normalizeCodexCliImageSize
+    : (size: string) => normalizeImageSize(size, profile.sizeRule)
+  const sizeLimitText = codexCli
+    ? CODEX_CLI_SIZE_LIMIT_TEXT
+    : useStrictValidation
+    ? `尺寸限制：宽高均为 ${profile.sizeRule.multiple} 的倍数，范围 ${profile.sizeRule.minEdge}-${profile.sizeRule.maxEdge}px，宽高比不超过 ${profile.sizeRule.maxAspectRatio}:1，总像素不超过 ${profile.sizeRule.maxPixels}。不符合的尺寸会逐条提示，需修改后才能确定。`
+    : SIZE_LIMIT_TEXT
 
   const activeRatio = ratio === 'custom' ? customRatio : ratio
   const parsedCustomRatio = parseRatio(customRatio)
@@ -111,30 +142,40 @@ export default function SizePickerModal({ currentSize, onSelect, onClose, allowA
     Math.max(parsedCustomRatio.width, parsedCustomRatio.height) / Math.min(parsedCustomRatio.width, parsedCustomRatio.height) > 3,
   )
 
+  // strict 模式下自定义宽高的逐条校验结果（空 = 合规）
+  const customErrors = useMemo(() => {
+    if (mode !== 'resolution' || !useStrictValidation) return []
+    const w = parseInt(customW, 10)
+    const h = parseInt(customH, 10)
+    if (!Number.isFinite(w) || !Number.isFinite(h)) return ['请输入有效的宽高数值']
+    return validateImageSize(w, h, profile.sizeRule)
+  }, [mode, useStrictValidation, customW, customH, profile.sizeRule])
+
   const previewSize = useMemo(() => {
     if (mode === 'auto') return 'auto'
-    
+
+    if (mode === 'presets') return presetSize
+
     if (mode === 'ratio') {
       const size = calculateImageSize(tier, activeRatio)
       return size ? normalizeSize(size) : ''
     }
-    
+
     if (mode === 'resolution') {
       const w = parseInt(customW, 10)
       const h = parseInt(customH, 10)
-      if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
-        return normalizeSize(`${w}x${h}`)
-      }
-      return ''
+      if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return ''
+      if (useStrictValidation) return customErrors.length > 0 ? '' : `${w}x${h}`
+      return normalizeSize(`${w}x${h}`)
     }
-    
+
     return ''
-  }, [mode, tier, activeRatio, customW, customH, normalizeSize])
+  }, [mode, presetSize, tier, activeRatio, customW, customH, normalizeSize, useStrictValidation, customErrors])
 
   const isClamped = useMemo(() => {
     if (!previewSize || previewSize === 'auto') return false
     if (mode === 'ratio' && ratio === 'custom') return customRatioClamped
-    if (mode === 'resolution') {
+    if (mode === 'resolution' && !useStrictValidation) {
       const w = parseInt(customW, 10)
       const h = parseInt(customH, 10)
       if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
@@ -142,7 +183,7 @@ export default function SizePickerModal({ currentSize, onSelect, onClose, allowA
       }
     }
     return false
-  }, [mode, ratio, customRatioClamped, customW, customH, previewSize])
+  }, [mode, ratio, customRatioClamped, customW, customH, previewSize, useStrictValidation])
 
   const showHint = () => setHintVisible(true)
   const hideHint = () => {
@@ -213,12 +254,22 @@ export default function SizePickerModal({ currentSize, onSelect, onClose, allowA
                 自动
               </button>
             )}
-            <button
-              onClick={() => setMode('ratio')}
-              className={`flex-1 rounded-lg py-1.5 text-sm font-medium transition ${mode === 'ratio' ? 'bg-white text-gray-800 shadow-sm dark:bg-gray-700 dark:text-gray-100' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}`}
-            >
-              按比例
-            </button>
+            {!useOfficialPresets && (
+              <button
+                onClick={() => setMode('ratio')}
+                className={`flex-1 rounded-lg py-1.5 text-sm font-medium transition ${mode === 'ratio' ? 'bg-white text-gray-800 shadow-sm dark:bg-gray-700 dark:text-gray-100' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}`}
+              >
+                按比例
+              </button>
+            )}
+            {useOfficialPresets && (
+              <button
+                onClick={() => setMode('presets')}
+                className={`flex-1 rounded-lg py-1.5 text-sm font-medium transition ${mode === 'presets' ? 'bg-white text-gray-800 shadow-sm dark:bg-gray-700 dark:text-gray-100' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}`}
+              >
+                官方预设
+              </button>
+            )}
             <button
               onClick={() => setMode('resolution')}
               className={`flex-1 rounded-lg py-1.5 text-sm font-medium transition ${mode === 'resolution' ? 'bg-white text-gray-800 shadow-sm dark:bg-gray-700 dark:text-gray-100' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}`}
@@ -242,6 +293,34 @@ export default function SizePickerModal({ currentSize, onSelect, onClose, allowA
                     <br />
                     由模型自己决定生成尺寸
                   </p>
+                </div>
+              </div>
+            )}
+
+            {mode === 'presets' && (
+              <div className="space-y-4 animate-fade-in">
+                <section>
+                  <div className="mb-2 text-xs font-medium text-gray-400 dark:text-gray-500">官方预设</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {profile.officialResolutions.map((preset) => {
+                      const value = `${preset.width}x${preset.height}`
+                      return (
+                        <button
+                          key={preset.label}
+                          className={`${buttonClass(previewSize === value)} flex items-center justify-between gap-1`}
+                          onClick={() => setPresetSize(value)}
+                        >
+                          <span className="font-mono text-xs">{preset.label}</span>
+                          {preset.width === 1024 && preset.height === 1024 && (
+                            <span className="text-[10px] opacity-70">快速档</span>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </section>
+                <div className="rounded-xl border border-gray-200/80 bg-gray-50/80 p-3 text-xs text-gray-600 dark:border-white/[0.05] dark:bg-white/[0.02] dark:text-gray-400">
+                  预设与后端官方分辨率一致，均可直接提交；1024x1024 为快速档，其余为 2K 官方尺寸。
                 </div>
               </div>
             )}
@@ -389,6 +468,16 @@ export default function SizePickerModal({ currentSize, onSelect, onClose, allowA
                     <div className="whitespace-pre-line leading-relaxed">{sizeLimitText}</div>
                   </div>
                 </div>
+                {useStrictValidation && customErrors.length > 0 && (
+                  <div className="animate-fade-in rounded-xl border border-red-200 bg-red-50/80 p-3 text-xs text-red-600 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+                    <div className="mb-1 font-medium">当前尺寸不可用：</div>
+                    <ul className="space-y-1">
+                      {customErrors.map((error) => (
+                        <li key={error}>· {error}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
             )}
           </div>

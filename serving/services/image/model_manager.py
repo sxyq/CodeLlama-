@@ -214,8 +214,13 @@ class ModelManager:
         Official model-card path; only passes parameters that the current
         pipeline signature really supports (no mask / no strength).
 
-        Output size is kept exactly at (width, height): the pipeline floors
-        dims to a multiple of 16, so we ceil up for it and crop back.
+        Output size is kept exactly at (width, height) of the main image:
+        the pipeline floors dims to a multiple of 16, so we ceil up for it
+        and crop back.
+
+        `image` is a single PIL image or an ordered list of PIL images
+        (1 = main image, 2..N = references). The pipeline natively accepts
+        PipelineImageInput (list) — never a hand-merged contact sheet.
 
         The inference guard covers ensure_loaded -> pipeline call -> crop +
         PNG encoding, mirroring generate().
@@ -224,8 +229,9 @@ class ModelManager:
         import torch
         with self._inference_lock:
             self.ensure_loaded()
-            target_w = width or image.width
-            target_h = height or image.height
+            main = image[0] if isinstance(image, list) else image
+            target_w = width or main.width
+            target_h = height or main.height
             pipe_w = math.ceil(target_w / 16) * 16
             pipe_h = math.ceil(target_h / 16) * 16
             kwargs: dict = dict(

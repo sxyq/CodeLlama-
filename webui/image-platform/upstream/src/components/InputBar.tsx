@@ -9,6 +9,7 @@ import { ensureImageCached, getCachedImage } from '../lib/imageCache'
 import { DEFAULT_FAL_IMAGE_SIZE, getChangedParams, getOutputImageLimitForSettings, normalizeParamsForSettings } from '../lib/paramCompatibility'
 import { getAtImageQuery, getImageMentionLabel, getPromptIndexFromVisibleIndex, getPromptMentionParts, getSelectedImageMentionLabel, imageMentionMatches, insertImageMentionAtVisibleRange, insertTextMentionAtVisibleRange, isCursorInSelectedImageMention, stripImageMentionMarkers } from '../lib/promptImageMentions'
 import { normalizeCodexCliImageSize, normalizeImageSize } from '../lib/size'
+import { getProfileForApiProfile, referenceLimitMessage } from '../lib/modelProfile'
 import { createMaskPreviewDataUrl } from '../lib/canvasImage'
 import { getSafeBoundingClientRect } from '../lib/domRect'
 import { collectAgentRoundOutputImageSlots } from '../lib/agentImageReferences'
@@ -23,9 +24,6 @@ import DragUploadOverlay from './input/dragUploadOverlay'
 import InputBatchBars from './input/inputBatchBars'
 import InputParamsPanel from './input/inputParamsPanel'
 import QueueStatusBadge from './input/QueueStatusBadge'
-
-/** API 支持的最大参考图数量 */
-const API_MAX_IMAGES = 16
 
 function getFavoriteCollectionTasksForBatch(collectionId: string, tasks: TaskRecord[], defaultFavoriteCollectionId: string | null) {
   const favoriteTasks = tasks.filter((task) => task.isFavorite)
@@ -423,6 +421,9 @@ export default function InputBar() {
       ? settings.profiles.find((profile) => profile.id === reusedTaskApiProfileId) ?? currentActiveProfile
       : currentActiveProfile
   ), [appMode, currentActiveProfile, reusedTaskApiProfileId, settings])
+  // 当前模型 Profile：尺寸 / 参考图 / 质量 / 高级能力限制的唯一来源（切换模型即时生效）
+  const modelProfile = useMemo(() => getProfileForApiProfile(activeProfile), [activeProfile])
+  const maxReferenceImages = modelProfile.maxReferenceImages
   const activeAgentConversation = appMode === 'agent'
     ? agentConversations.find((conversation) => conversation.id === activeAgentConversationId) ?? null
     : null
@@ -464,7 +465,7 @@ export default function InputBar() {
   const isFalProvider = activeProvider === 'fal'
   const agentAutoImageCount = appMode === 'agent'
   const moderationDisabled = isFalProvider
-  const transparentOutputAvailable = appMode === 'gallery'
+  const transparentOutputAvailable = appMode === 'gallery' && modelProfile.supportsRGBA
   const showTransparentOutputControl = transparentOutputAvailable && (params.output_format === 'png' || params.output_format === 'webp')
   const transparentOutputEnabled = transparentOutputAvailable && showTransparentOutputControl && params.transparent_output
   const compressionDisabled = params.output_format === 'png' || isFalProvider
@@ -480,11 +481,19 @@ export default function InputBar() {
     : `OpenAI 最大请求数量为 ${outputImageLimit}`
   const displaySize = isFalTextToImage && params.size === 'auto'
     ? DEFAULT_FAL_IMAGE_SIZE
-    : (activeProfile.codexCli ? normalizeCodexCliImageSize(params.size) : normalizeImageSize(params.size)) || DEFAULT_PARAMS.size
+    : (activeProfile.codexCli
+        ? normalizeCodexCliImageSize(params.size)
+        : normalizeImageSize(params.size, modelProfile.sizeRule)) || DEFAULT_PARAMS.size
 
-  // 质量三档与后端 _resolve_steps 对应：快速=4 / 标准=24 / 高质量=40
+  // 质量三档与后端 _resolve_steps 对应，步数按当前模型 Profile：通用 4/24/40，Qwen 同值但带标注
   const qualityOptions = activeProfile.codexCli
     ? [{ label: 'auto', value: 'auto' }]
+    : modelProfile.annotateQualitySteps
+    ? [
+        { label: `快速 · ${modelProfile.qualitySteps.fast} 步`, value: 'low' },
+        { label: `标准 · ${modelProfile.qualitySteps.standard} 步`, value: 'medium' },
+        { label: `高质量 · ${modelProfile.qualitySteps.high} 步（官方推荐）`, value: 'high' },
+      ]
     : [
         { label: '快速', value: 'low' },
         { label: '标准', value: 'medium' },
@@ -496,8 +505,12 @@ export default function InputBar() {
             ]
           : []),
       ]
-  const atImageLimit = inputImages.length >= API_MAX_IMAGES
-  const uploadImageTooltipText = atImageLimit ? `参考图数量已达上限（${API_MAX_IMAGES} 张），无法继续添加` : '上传图片'
+  const atImageLimit = inputImages.length >= maxReferenceImages
+  const uploadImageTooltipText = atImageLimit
+    ? referenceLimitMessage(modelProfile)
+    : modelProfile.referenceRoleLabels
+    ? `上传图片（已选 ${inputImages.length} / ${maxReferenceImages}）`
+    : '上传图片'
   const transparentOutputHint = useHintTooltip()
   const handleTransparentOutputMenuOpenChange = useCallback((open: boolean) => {
     if (open) transparentOutputHint.hide()
@@ -505,7 +518,7 @@ export default function InputBar() {
   const compressionHint = useHintTooltip({ enabled: () => compressionDisabled })
   const moderationHint = useHintTooltip({ enabled: () => moderationDisabled })
   const sizeHint = useHintTooltip({ enabled: () => isFalTextToImage || activeProfile.codexCli })
-  const qualityHint = useHintTooltip({ enabled: () => activeProfile.codexCli || isFalProvider })
+  const qualityHint = useHintTooltip({ enabled: () => activeProfile.codexCli || isFalProvider || modelProfile.annotateQualitySteps })
   const nLimitHint = useHintTooltip({ autoHideMs: 2000 })
   const streamConcurrentHint = useHintTooltip({ enabled: () => streamConcurrentByN })
   const maskTargetImage = maskDraft
@@ -802,15 +815,12 @@ export default function InputBar() {
   const handleFiles = async (files: FileList | File[]) => {
     try {
       const currentCount = useStore.getState().inputImages.length
-      if (currentCount >= API_MAX_IMAGES) {
-        useStore.getState().showToast(
-          `参考图数量已达上限（${API_MAX_IMAGES} 张），无法继续添加`,
-          'error',
-        )
+      if (currentCount >= maxReferenceImages) {
+        useStore.getState().showToast(referenceLimitMessage(modelProfile), 'error')
         return
       }
 
-      const remaining = API_MAX_IMAGES - currentCount
+      const remaining = maxReferenceImages - currentCount
       const accepted = Array.from(files).filter((f) => f.type.startsWith('image/'))
       const toAdd = accepted.slice(0, remaining)
       const discarded = accepted.length - toAdd.length
@@ -821,7 +831,8 @@ export default function InputBar() {
 
       if (discarded > 0) {
         useStore.getState().showToast(
-          `已达上限 ${API_MAX_IMAGES} 张，${discarded} 张图片被丢弃`,
+          modelProfile.referenceLimitMessage
+            ?? `已达上限 ${maxReferenceImages} 张，${discarded} 张图片被丢弃`,
           'error',
         )
       }
@@ -1443,9 +1454,18 @@ export default function InputBar() {
               MASK
             </span>
           )}
-          <span className="absolute bottom-1 left-1 flex h-4 w-4 items-center justify-center rounded-full bg-black/55 text-[9px] font-semibold text-white backdrop-blur-sm z-10 pointer-events-none">
-            {idx + 1}
-          </span>
+          {modelProfile.referenceRoleLabels ? (
+            <span
+              className="absolute bottom-0 inset-x-0 z-10 bg-black/55 px-0.5 text-center text-[8px] leading-[14px] text-white backdrop-blur-sm pointer-events-none"
+              title={idx === 0 ? '主图' : `参考图 ${idx + 1}`}
+            >
+              {idx === 0 ? '主图' : `参考图 ${idx + 1}`}
+            </span>
+          ) : (
+            <span className="absolute bottom-1 left-1 flex h-4 w-4 items-center justify-center rounded-full bg-black/55 text-[9px] font-semibold text-white backdrop-blur-sm z-10 pointer-events-none">
+              {idx + 1}
+            </span>
+          )}
           <button
             className="absolute inset-0 w-full h-full bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer z-20 focus:outline-none border-none"
             onClick={(e) => {
@@ -1502,6 +1522,11 @@ export default function InputBar() {
   const renderImageThumbs = () => {
     return (
       <div ref={imagesRef}>
+        {modelProfile.referenceRoleLabels && (
+          <div className="mb-2 text-xs text-gray-400 dark:text-gray-500 ml-1">
+            已选 {inputImages.length} / {maxReferenceImages} 张 · 第 1 张为主图
+          </div>
+        )}
         <div className="grid grid-cols-[repeat(auto-fill,52px)] justify-between gap-x-2 gap-y-3 mb-3">
           {inputImages.map((img, idx) => renderImageThumb(img, idx))}
           {renderClearAllButton()}
@@ -1525,6 +1550,7 @@ export default function InputBar() {
       params={params}
       setParams={setParams}
       activeProfile={activeProfile}
+      modelProfile={modelProfile}
       isFalProvider={isFalProvider}
       isFalTextToImage={isFalTextToImage}
       displaySize={displaySize}
@@ -1568,7 +1594,7 @@ export default function InputBar() {
 
   return (
     <>
-      <DragUploadOverlay visible={isDragging} atImageLimit={atImageLimit} maxImages={API_MAX_IMAGES} />
+      <DragUploadOverlay visible={isDragging} atImageLimit={atImageLimit} maxImages={maxReferenceImages} />
 
       {showSizePicker && (
         <SizePickerModal
@@ -1577,6 +1603,7 @@ export default function InputBar() {
           onClose={() => setShowSizePicker(false)}
           allowAuto={!isFalTextToImage}
           codexCli={activeProfile.codexCli}
+          profile={modelProfile}
         />
       )}
 
@@ -1629,7 +1656,9 @@ export default function InputBar() {
                 </div>
                 {mobileCollapsed && (
                   <div className="text-xs text-gray-400 dark:text-gray-500 mb-2 ml-1">
-                    {maskDraft ? `1 张遮罩主图 · ${referenceImages.length} 张参考图` : `${inputImages.length} 张参考图`}
+                    {modelProfile.referenceRoleLabels
+                      ? `已选 ${inputImages.length} / ${maxReferenceImages} 张`
+                      : maskDraft ? `1 张遮罩主图 · ${referenceImages.length} 张参考图` : `${inputImages.length} 张参考图`}
                   </div>
                 )}
               </>

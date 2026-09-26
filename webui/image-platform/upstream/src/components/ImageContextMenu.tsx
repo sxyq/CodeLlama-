@@ -1,5 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react'
 import { useStore, addImageFromUrl } from '../store'
+import { getActiveApiProfile } from '../lib/apiProfiles'
+import { getProfileForApiProfile, referenceLimitMessage } from '../lib/modelProfile'
 import { canCopyImageToClipboard, copyImageSourceToClipboard, getClipboardFailureMessage } from '../lib/clipboard'
 import { downloadImageEntriesAsZip, downloadImageIds, formatExportFileTime, getImageZipEntries } from '../lib/downloadImages'
 import { suppressGlobalClicks } from '../lib/clickSuppression'
@@ -172,8 +174,10 @@ export default function ImageContextMenu() {
   const handleEdit = async (e: React.MouseEvent) => {
     e.stopPropagation()
     setMenuInfo(null)
-    if (inputImages.length >= 16) {
-      showToast('参考图数量已达上限（16 张），无法继续添加', 'error')
+    // 上限按当前模型 Profile（通用 16 张；Qwen-Image-2.1 为 5 张并用专属文案）
+    const modelProfile = getProfileForApiProfile(getActiveApiProfile(useStore.getState().settings))
+    if (inputImages.length >= modelProfile.maxReferenceImages) {
+      showToast(referenceLimitMessage(modelProfile), 'error')
       return
     }
 

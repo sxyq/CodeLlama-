@@ -1,77 +1,86 @@
 # Last Agent Handoff
 
 Updated At: 2026-09-26  
-Last Task ID: IMAGE-WEBUI-QUALITY-SAFETY-001  
+Last Task ID: QWEN-IMAGE-MAX-CAPABILITY-AND-UI-PROFILE-001  
 Status: COMPLETE — AWAITING COMMANDER REVIEW（Git 结果见最终回复 / git log）
 
 ## Completed
 
-- **Quality 真实映射上线**（双端点统一，单一 helper `_resolve_steps`）：
-  fast/low=4，standard/medium/auto=24，high/xhigh/max=40；优先级 = 显式 num_inference_steps > quality > 24 默认；
-  `schemas.GenerationRequest` 新增 `quality` 字段（改动前 pydantic 忽略该字段，UI 档位完全失效，实际一直是管线默认 40 步）
-- **WebUI**：质量三档中文（快速/标准/高质量→4/24/40），默认 quality=medium（标准 24）；
-  步数框显示「生效步数 = N（按质量档）」，手填时标注「步数（自定义）」——消除 Quality=High Steps=4 类矛盾显示；
-  服务器 `npm test` 34 文件 576 用例全绿，dist 已重建
-- **Inference guard**：`ModelManager._inference_lock` 全程持有（ensure_loaded+pipeline+结果编码）；
-  推理中 `POST /unload` → **409 INFERENCE_BUSY**（不置空管线、不 empty_cache、不释放 gpu.lock）；
-  idle watcher 同一路径，抢不到锁跳过本轮；queue 与 guard 职责分离不变
-- **计时拆分**：响应新增 queue_wait_seconds / load_seconds / inference_seconds / total_seconds；
-  `generation_seconds` 保留且 = inference_seconds（旧客户端兼容）；每次请求日志 `[gen]/[edit] steps=...`
-- **实测全 PASS**：
-  - 映射 5/5（fast4/standard24/high40/显式12压high/默认24）
-  - A/B/C 4·24·40 步真实生成（seed=42，1024²，同 prompt `生成一只橙色小猫`，计时+峰值 VRAM+文件已记录）
-  - 推理中 unload：409 + 锁 held + 生成 200 无 CUDA 错误 + 完成后 unload 200 FREE（UNLOAD_DURING_INFERENCE=SAFE）
-  - Zrald lease：推理中两 probe 均 503 GPU_BUSY，message=lease held by [image-service]，unload 未提前释放
-  - Queue：串行 PASS，首请求 queue_wait=0.000、次请求 59.698
-  - Edit：quality=high→40，显式 12→12；输出 1024²
-  - 浏览器 E2E：高质量→生效步数 40→日志 `steps=40 quality=high`→出图；快速→4
-  - Idle：IDLE=20 临时实测（推理中 age>20 仍 loaded，结束后 36.2s 卸载），已恢复 600
-  - TTL 1800/300 未改动（env+environ 双确认）；端口 8010/8011/8020/11434/3000 正常、8000 CLOSED
-- 报告：`reports/IMAGE_WEBUI_QUALITY_SAFETY.md`
+- **官方基线核验**（模型卡+pipeline 源码只读）：40 steps 官方推荐、最多10参考图（产品策略封顶 **5**）、
+  7 档 2K 预设逐字一致、无 mask/strength/background 参数、RGBA 靠 prompt（profile=false）
+- **后端能力改造**：`serving/services/image/capability.py` 单一配置源
+  （512-2752 边、≤4,300,800px、宽高比≤1.8、16倍数、5图、quality 4/24/40、8档预设、features）；
+  edits 支持 **1-5 张原生 list**（0→400、>5→400 TOO_MANY_REFERENCE_IMAGES，保序，禁止拼图）；
+  `/status` 新增 `capability`；quality 表迁入 capability（_resolve_steps 复用）
+- **能力实测**（全部串行 + 每档记录 image/total 峰值/耗时/输出尺寸）：
+  - STEPS_VRAM_SCALING=MINIMAL：4/24/40 → img 17,316/17,282/17,282
+  - 官方 2K 文生图 **7/7 PASS**（img 30,406-33,650；embed 同场总峰值最高 48,455）
+  - 参考图 1-5 @1024² **全 PASS**（img 20,578→31,414）
+  - 5ref+2048² embed 同场 **CUDA OOM**（decode 需+4.8GB 仅剩1.6GB）→ 触发停止规则，
+    杀 runner+中止在途高危档，OOM 计数止于75；空闲窗口看门狗重试 **PASS**（img 41,372）
+  - 5ref+2752×1536 空闲 **PASS**（img 45,396，绝对上限）；1536×2752 四次窗口被 embed 抢占
+    NOT ESTABLISHED（零 OOM）
+  - 显式共存：embed 触发常驻 + t2i2048² → PASS（total 48,505，free 635MiB）
+  - 真实场景（1 流程图+4 学术参考图）：24 步与 40 步均 PASS
+- **前端 Model Profile**（子 Agent 实现，主线验收）：`src/lib/modelProfile.ts` 注册表机制，
+  Qwen 专属 + 通用默认零影响；官方8档预设页签、自定义尺寸逐条中文校验、5图上限
+  `x/5`+主图/参考图N 标签+指定拒绝文案、质量 `快速4/标准24/高质量40(官方推荐)`、
+  运行时 `/status.capability` 覆盖静态镜像；远端 npm test **35文件/594用例全绿**、build 通过
+- **浏览器 E2E**：官方预设8档、尺寸3000逐条报错+禁用、质量40联动、5/5 标签计数、
+  满额拒绝文案（按钮 aria + 上限校验）、**refs=5 → POST 200**、旧 `multiple input images` 全程0次；
+  磁盘 filechooser 因 IAB `ambiguous routed session` 不可自动化（三轮验证，记录为 harness 限制）
+- **回归全 PASS**：queue（0/65.4s 拆分）、unload guard 活体409→200、TTL1800/300、IDLE600、
+  8010/8011/8020/11434/3000 正常、8000 CLOSED、旧字段兼容
+- 报告：`reports/QWEN_IMAGE_MAX_CAPABILITY.md`
 
 ## Status Flags
 
 | Flag | Value |
 |---|---|
-| QUALITY_MAPPING | fast4 / medium24 / high40，显式优先，generations+edits 统一 |
-| EXPLICIT_STEPS_OVERRIDE | PASS（quality=high + steps=12 → 12） |
-| UNLOAD_DURING_INFERENCE | 409 INFERENCE_BUSY，lease 保持，SAFE |
-| ZRALD_LEASE_SAFETY | PASS（holder=image-service 全程） |
-| QUEUE_TIMING | PASS（0.000 / 59.698） |
-| ERROR_ENVELOPE | 统一 `{"error":{code,message}}`（HTTPException 处理器） |
-| GIT | 见最终回复（commit `fix: align image quality presets and inference lifecycle` → push） |
+| MAX_REFERENCE_IMAGES | 5（前端+后端一致，capability 单源） |
+| OFFICIAL_RESOLUTIONS | 8 档全 PASS 开放（1024² 快速 + 7 档 2K） |
+| CUSTOM_SIZE_LIMIT | 512-2752 / ≤4,300,800px / ≤1.8:1 / 16倍数 |
+| ABSOLUTE_TESTED_MAX | 5ref+2752×1536+40（idle）img 45,396 |
+| PRODUCTION_SAFE | t2i 7档；edit≤5ref 输出≤1024² 全条件；5ref×2K 仅 idle GPU |
+| OOM_COUNT | 75（仅首次失败产生，此后零复犯） |
+| BROWSER_5REF_E2E | PASS（编辑输出等价路径；filechooser 不可用见报告§11） |
+| GIT | 见最终回复（`feat: enable qwen image full capability profile` → push） |
 
 ## 服务终态
 
 | 端口 | 状态 |
 |---|---|
-| 8010 Zrald | RUNNING（未动，/manager/status 正常） |
-| 8011 Image | RUNNING（新代码，idle600，model unloaded，锁 FREE，queue 0/0） |
-| 8020 WebUI | RUNNING（dist 重建：中文质量三档+生效步数） |
-| 11434 Ollama | RUNNING（10 模型，未动） |
+| 8010 Zrald | RUNNING（未动） |
+| 8011 Image | RUNNING（新 capability，model unloaded，锁 FREE，idle600） |
+| 8020 WebUI | RUNNING（dist=Model Profile 版） |
+| 11434 Ollama | RUNNING（未改；embed 周期驻留仍在） |
 | 3000 OWUI | RUNNING（未动） |
 | 8000 vLLM | CLOSED |
-| GPU | 299 MiB（正常水位），gpu.lock FREE |
-| 服务 env | `~/ai-serving/configs/image/service.local.env`（IDLE=600/RETENTION=1800/CLEANUP=300/QUEUE 1/8/480，真实 CORS origin，**永不入 Git**） |
+| GPU | ~15.2GB（embed 常驻水位），gpu.lock FREE |
+| 测试素材 | `tmp/capability-inputs/` 已删除；输出走 TTL 目录（1800/300 未改） |
 
 ## 环境要点（下轮必读）
 
-- **Ollama embedding 周期驻留**：LAN 客户端 CLIENT_IP_REDACTED 周期 `/api/embed` → 冷加载前需抓 `/api/ps` 空闲窗口；
-  模型载入后不受影响。不绕开 `_ollama_gpu_busy` 保护。
-- **pkill/pgrep 自匹配陷阱（本轮又踩一次）**：远端命令串里含被搜模式会自杀；
-  一律 `pgrep -f "[s]erver:app"` / `[r]un_xxx` 括号写法，杀进程与启动分两次 SSH。
-- **HTTPError body**：urllib 的 `HTTPError` 没有 `.body` 属性，用 `e.read()`（本轮测试脚本踩过）。
-- **IAB 自动化限制**：受控 number input `fill("")` 清不掉 → 三击全选 + Backspace；
-  截图偶发 compositor 超时 → 改 DOM 只读查询验证；filechooser/download 路由不可用。
-- 本机 Mac 代理（127.0.0.1:7897）拦内网 curl —— `--noproxy '*'`。
-- 构建工具链：服务器 `$HOME/ai-serving/env/node-v22.23.3-linux-x64/bin`；本地 rollup 原生模块签名损坏，测试在服务器跑。
+- **embed 静默窗口是所有冷加载/空闲压测的前置**：客户端每~2min 续约、静默窗2-3min居多，
+  偶发>5min 窗口（本轮2次完整跑完280s）。空闲压测用 `/tmp/idle_ref5.py` 的看门狗模式：
+  等窗→跑→embed闯入即中止（SIGTERM→10s→SIGKILL）→重启→换窗，零重复OOM。
+- **pkill/pgrep 自匹配**：同条命令行含目标串普通文本（如脚本路径）时括号技巧也失效——
+  杀进程、创建脚本、pgrep 必须分三次 SSH；用 PID 直杀最稳。
+- **矩阵脚本**：`/tmp/matrix_runner.py <spec.json> <out.jsonl>`（t2i/edit、GPU_BUSY 重试、
+  逐档采样 image/total 峰值、OOM 日志标记）；ollama 标志函数必须带 `--format=csv,noheader,nounits`。
+- **IAB filechooser**：`waitForEvent("filechooser")` 必报 `ambiguous routed session`；
+  浏览器加图用「编辑输出」（IndexedDB 新任务卡 dataUrl 可解析，旧格式卡 dataUrl 为空）；
+  number input 清值用 Backspace（fill 无效）。
+- 本机 Mac 代理拦内网：curl 用 `--noproxy '*'`；本地 node_modules rollup 签名损坏，
+  npm test/build 一律在服务器跑（Node 于 `env/node-v22.23.3-linux-x64/bin`）。
+- `service.local.env` / `config/*.json` / `dist/` 含真实 IP，永不入 Git。
 
 ## Exact Next Action
 
-WAIT FOR COMMANDER REVIEW；可选待办见 NEXT_ACTION
+WAIT FOR COMMANDER REVIEW
 
 ## Do Not
 
 - 未授权不重启/升级 Ollama、不动 vLLM YAML、不动 Zrald/llama.cpp/Open WebUI/CUDA/Clash/网络
-- `service.local.env`、`config/models.json`、`config/preset-config.json`、`dist/` 含真实 IP —— 永不入 Git
-- 禁 git add -A；生成图片/上传图片/tmp/logs/venv/node_modules 不入 Git
+- 不在 embed 驻留时做5ref+2K 压测（会复现 OOM）；停止规则：一次 OOM 即停更高压力档
+- 生成图片/tmp/logs/模型/node_modules/dist 本地配置/真实 IP 不入 Git；禁 git add -A

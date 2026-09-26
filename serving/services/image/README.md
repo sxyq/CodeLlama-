@@ -1,4 +1,4 @@
-# Qwen-Image-2.1 Service（RUNNING：queue + CORS + TTL + quality 映射 + inference guard）
+# Qwen-Image-2.1 Service（RUNNING：queue + CORS + TTL + quality 映射 + inference guard + 多参考图 + capability）
 
 - model: /data/vllm/ImageModel/Qwen-Image-2.1（local_files_only）
 - port: 8011
@@ -24,7 +24,10 @@
 | CORS | `IMAGE_ALLOWED_ORIGINS` 精确 origin 白名单（代码零真实 IP，无 `*`） |
 | negative_prompt | QwenImage21 仅当 true_cfg_scale>1 才生效 → 提供 negative_prompt 时传 `true_cfg_scale=4.0` |
 | 输出格式 | 管线 PNG；`output_format=jpeg/webp` 时服务端转码（JPEG 白底合成） |
-| quality → steps | 统一 helper `_resolve_steps`：优先级 = 显式 num_inference_steps > quality > 24 默认；fast/low=4，standard/medium/auto=24，high/xhigh/max=40（generations 与 edits 共用） |
+| quality → steps | 统一 helper `_resolve_steps`：优先级 = 显式 num_inference_steps > quality > 24 默认；fast/low=4，standard/medium/auto=24，high/xhigh/max=40（generations 与 edits 共用；表在 `capability.py`） |
+| 参考图 | **1～5 张原生多图**（image=单张 / image=[列表]，保序，图1=主图）；0 张 → 400 INVALID_IMAGE；>5 → 400 `TOO_MANY_REFERENCE_IMAGES`；禁止 contact-sheet 拼接 |
+| 尺寸能力 | 单边 512–**2752**、总像素 ≤ **4,300,800**、宽高比 ≤ **1.8**、16 倍数（`capability.py` 单一配置源）；keep-original 超限自动等比压入包络 |
+| capability | `GET /status` 新增 `capability`（limits/quality_steps/resolutions/features）——前端 Model Profile 与其对齐 |
 
 ## API
 
@@ -50,19 +53,22 @@ curl -X POST http://SERVER_IP:8011/v1/images/generations \
   -H "Content-Type: application/json" \
   -d '{"prompt":"A red apple on a wooden table","n":1,"size":"2048x2048","num_inference_steps":4}'
 # 可选：negative_prompt / seed / output_format(png|jpeg|webp) / quality(fast|low|standard|medium|high)
-# size="auto" → 1024x1024；512–2048 且 16 倍数，越界 400 INVALID_SIZE
+# size="auto" → 1024x1024；512–2752、16 倍数、像素≤4,300,800、宽高比≤1.8，越界 400 INVALID_SIZE
 # steps 规则：显式 num_inference_steps > quality 映射 > 24 默认
+# 官方 2K 预设（全部允许）：2048x2048 / 2400x1792 / 1792x2400 / 2528x1696 / 1696x2528 / 2752x1536 / 1536x2752
 ```
 
-### 图生图（edits，multipart）
+### 图生图（edits，multipart，1～5 张参考图）
 
 ```bash
 curl -X POST http://SERVER_IP:8011/v1/images/edits \
-  -F "image=@input.png" \        # 亦接受上游字段名 image[]（单张）
-  -F "prompt=Change the red apple to a green apple" \
-  -F "size=auto" \               # auto/缺省=保持原尺寸；"WxH"=显式尺寸
-  -F "num_inference_steps=4"     # 可选（显式优先）
-  # -F "seed=42" / -F "negative_prompt=..." / -F "output_format=jpeg" / -F "quality=high"
+  -F "image[]=@main.png" \       # 图1 = 主图（亦接受字段名 image）
+  -F "image[]=@ref2.png" \       # 图2～图5 = 参考图（保持顺序，可省略）
+  -F "prompt=..." \
+  -F "size=auto" \               # auto/缺省=主图原尺寸（超限等比压缩）；"WxH"=显式尺寸
+  -F "num_inference_steps=40"    # 可选（显式优先）
+  # -F "quality=high" / -F "seed=42" / -F "negative_prompt=..." / -F "output_format=jpeg"
+  # >5 张 → 400 TOO_MANY_REFERENCE_IMAGES；0 张 → 400 INVALID_IMAGE
   # 旧客户端仍可用：-F "width=..." -F "height=..."（优先于 size）
 ```
 
@@ -81,14 +87,14 @@ curl -X POST http://SERVER_IP:8011/v1/images/edits \
 `generation_seconds`（旧字段）= `inference_seconds`（兼容保留）。
 
 错误码：缺字段/空 prompt/非图片/超限/尺寸越界 → 400（INVALID_REQUEST/INVALID_IMAGE/INVALID_SIZE/INVALID_FORMAT/
-MASK_UNSUPPORTED/MULTIPLE_IMAGES）；队列满 → 429 QUEUE_FULL；排队超时 → 503 QUEUE_TIMEOUT；
+MASK_UNSUPPORTED/TOO_MANY_REFERENCE_IMAGES）；队列满 → 429 QUEUE_FULL；排队超时 → 503 QUEUE_TIMEOUT；
 GPU 租约冲突 → 503 GPU_BUSY；推理中 unload → 409 INFERENCE_BUSY；管线失败 → 500。
 错误响应统一 `{"error":{"code","message"}}`。
 
 约束（以官方 QwenImage21Pipeline 真实签名为准）：
 - 支持字段：image(或 image[]) / prompt / negative_prompt / num_inference_steps / seed / size（或 width/height）/ output_format
 - **mask 不支持** → UI 已禁用并提示，后端 400 MASK_UNSUPPORTED
-- **strength 不支持**；多图输入不支持 → 400 MULTIPLE_IMAGES
+- **strength 不支持**；参考图 1～5 张（pipeline 原生 list），>5 张 → 400 TOO_MANY_REFERENCE_IMAGES
 - 输入：PNG / JPEG / WEBP，≤20MB，RGB/RGBA（RGBA 保留 alpha 透传）；上传仅内存读取，不落盘
-- keep-original：ceil 到 16 倍数生成后 crop 回精确原尺寸；>2048 边等比缩到 2048
+- keep-original：ceil 到 16 倍数生成后 crop 回精确原尺寸；超限输入等比压到 2752 边 / 4,300,800 像素内
 - lazy load + flock 租约 + idle 自动卸载 + 统一队列 与 generation 完全共用

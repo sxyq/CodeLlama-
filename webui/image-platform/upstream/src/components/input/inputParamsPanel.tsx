@@ -1,4 +1,5 @@
 import type { ApiProfile, TaskParams } from '../../types'
+import type { ModelProfile } from '../../lib/modelProfile'
 import { dismissAllTooltips } from '../../lib/tooltipDismiss'
 import Select from '../Select'
 import ButtonTooltip from './buttonTooltip'
@@ -16,6 +17,7 @@ export default function InputParamsPanel({
   params,
   setParams,
   activeProfile,
+  modelProfile,
   isFalProvider,
   isFalTextToImage,
   displaySize,
@@ -56,6 +58,7 @@ export default function InputParamsPanel({
   params: TaskParams
   setParams: (patch: Partial<TaskParams>) => void
   activeProfile: ApiProfile
+  modelProfile: ModelProfile
   isFalProvider: boolean
   isFalTextToImage: boolean
   displaySize: string
@@ -92,14 +95,15 @@ export default function InputParamsPanel({
   qualityHint: HintTooltipState
   onOpenSizePicker: () => void
 }) {
-  // 与后端 server._resolve_steps 一致：显式 steps > 质量档 > 24
+  // 与后端 _resolve_steps 一致：显式 steps > 质量档 > 24；档位步数取当前模型 Profile
+  const qualitySteps = modelProfile.qualitySteps
   const qualityStepMap: Record<string, number> = {
-    fast: 4, low: 4,
-    standard: 24, medium: 24, auto: 24,
-    high: 40, xhigh: 40, max: 40,
+    fast: qualitySteps.fast, low: qualitySteps.fast,
+    standard: qualitySteps.standard, medium: qualitySteps.standard, auto: qualitySteps.standard,
+    high: qualitySteps.high, xhigh: qualitySteps.high, max: qualitySteps.high,
   }
   const stepsCustom = params.num_inference_steps != null
-  const effectiveSteps = params.num_inference_steps ?? qualityStepMap[params.quality] ?? 24
+  const effectiveSteps = params.num_inference_steps ?? qualityStepMap[params.quality] ?? qualitySteps.standard
   return (
     <div className={`grid ${cols} gap-2 text-xs flex-1`}>
       <label
@@ -155,8 +159,12 @@ export default function InputParamsPanel({
             : selectClass}
         />
         <ButtonTooltip
-          visible={(activeProfile.codexCli || isFalProvider) && qualityHint.visible}
-          text={isFalProvider ? <>fal.ai 不支持 <code className="rounded bg-white/10 px-1 py-0.5 font-mono">auto</code> 质量参数</> : 'Codex CLI 不支持质量参数'}
+          visible={(activeProfile.codexCli || isFalProvider || modelProfile.annotateQualitySteps) && qualityHint.visible}
+          text={isFalProvider
+            ? <>fal.ai 不支持 <code className="rounded bg-white/10 px-1 py-0.5 font-mono">auto</code> 质量参数</>
+            : activeProfile.codexCli
+            ? 'Codex CLI 不支持质量参数'
+            : <>官方高质量 / {qualitySteps.high} steps（快速 {qualitySteps.fast} · 标准 {qualitySteps.standard}）</>}
         />
       </label>
       <label className="flex flex-col gap-0.5">

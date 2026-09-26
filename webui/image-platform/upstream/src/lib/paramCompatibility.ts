@@ -1,6 +1,7 @@
 import { DEFAULT_PARAMS, type AppSettings, type TaskParams } from '../types'
 import { getActiveApiProfile, isOpenAICompatibleProvider } from './apiProfiles'
 import { getImageGenerationModel, isGptImage25Model } from './imageModels'
+import { getProfileForModel } from './modelProfile'
 import { normalizeCodexCliImageSize, normalizeImageSize } from './size'
 
 export const DEFAULT_FAL_IMAGE_SIZE = '1360x1024'
@@ -17,10 +18,12 @@ export function normalizeParamsForSettings(
   options: { hasInputImages?: boolean } = {},
 ): TaskParams {
   const activeProfile = getActiveApiProfile(settings)
+  // 尺寸与高级能力限制一律取当前模型 Profile（未登记模型 = 通用默认，行为不变）
+  const modelProfile = getProfileForModel(getImageGenerationModel(activeProfile).trim() || activeProfile.model)
   const outputImageLimit = getOutputImageLimitForSettings(settings)
   const nextParams: TaskParams = {
     ...params,
-    size: normalizeImageSize(params.size) || DEFAULT_PARAMS.size,
+    size: normalizeImageSize(params.size, modelProfile.sizeRule) || DEFAULT_PARAMS.size,
     n: Math.min(outputImageLimit, Math.max(1, params.n || DEFAULT_PARAMS.n)),
   }
 
@@ -38,6 +41,10 @@ export function normalizeParamsForSettings(
 
   if ((nextParams.quality === 'xhigh' || nextParams.quality === 'max') && !isGptImage25Model(getImageGenerationModel(activeProfile))) {
     nextParams.quality = 'high'
+  }
+
+  if (!modelProfile.supportsRGBA) {
+    nextParams.transparent_output = false
   }
 
   if (nextParams.output_format === 'png') {

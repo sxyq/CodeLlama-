@@ -132,3 +132,45 @@ describe('parameter compatibility', () => {
     expect(normalizeParamsForSettings({ ...DEFAULT_PARAMS, quality: 'max' }, settings).quality).toBe('high')
   })
 })
+
+describe('model profile parameter compatibility', () => {
+  const qwenSettings = (() => {
+    const profile = createDefaultOpenAIProfile({ apiKey: 'test-key', model: 'Qwen-Image-2.1' })
+    return normalizeSettings({ ...DEFAULT_SETTINGS, profiles: [profile], activeProfileId: profile.id })
+  })()
+
+  it('keeps official Qwen preset sizes unchanged', () => {
+    for (const size of ['1024x1024', '2048x2048', '2400x1792', '1792x2400', '2528x1696', '1696x2528', '2752x1536', '1536x2752']) {
+      expect(normalizeParamsForSettings({ ...DEFAULT_PARAMS, size }, qwenSettings).size).toBe(size)
+    }
+    expect(normalizeParamsForSettings({ ...DEFAULT_PARAMS, size: 'auto' }, qwenSettings).size).toBe('auto')
+  })
+
+  it('repairs out-of-envelope custom sizes with the Qwen rule', () => {
+    const normalized = normalizeParamsForSettings({ ...DEFAULT_PARAMS, size: '3008x1536' }, qwenSettings).size
+    const [width, height] = normalized.split('x').map(Number)
+    expect(width).toBeLessThanOrEqual(2752)
+    expect(height).toBeLessThanOrEqual(2752)
+    expect(width % 16).toBe(0)
+    expect(height % 16).toBe(0)
+    expect(width * height).toBeLessThanOrEqual(4_300_800)
+  })
+
+  it('still clamps oversized sizes for generic models', () => {
+    const profile = createDefaultOpenAIProfile({ apiKey: 'test-key' })
+    const settings = normalizeSettings({ ...DEFAULT_SETTINGS, profiles: [profile], activeProfileId: profile.id })
+    const normalized = normalizeParamsForSettings({ ...DEFAULT_PARAMS, size: '2752x1536' }, settings).size
+    const [width, height] = normalized.split('x').map(Number)
+    expect(Math.max(width, height)).toBeLessThanOrEqual(2048)
+    expect(width % 64).toBe(0)
+    expect(height % 64).toBe(0)
+  })
+
+  it('forces transparent output off when the profile has no RGBA support', () => {
+    expect(normalizeParamsForSettings({ ...DEFAULT_PARAMS, transparent_output: true }, qwenSettings).transparent_output).toBe(false)
+
+    const profile = createDefaultOpenAIProfile({ apiKey: 'test-key' })
+    const settings = normalizeSettings({ ...DEFAULT_SETTINGS, profiles: [profile], activeProfileId: profile.id })
+    expect(normalizeParamsForSettings({ ...DEFAULT_PARAMS, transparent_output: true }, settings).transparent_output).toBe(true)
+  })
+})
