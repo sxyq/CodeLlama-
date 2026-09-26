@@ -17,15 +17,21 @@ from __future__ import annotations
 
 import fcntl
 import gc
+import json
 import math
 import os
 import subprocess
 import threading
 import time
+import urllib.request
 from pathlib import Path
 
 MODEL_PATH = "/data/vllm/ImageModel/Qwen-Image-2.1"
 GPU_LOCK_PATH = Path("/home/syy/ai-serving/state/gpu.lock")
+OLLAMA_PS_URL = os.environ.get("OLLAMA_PS_URL", "http://127.0.0.1:11434/api/ps")
+# size_vram above this = an active Ollama GPU runner (strict exclusion)
+OLLAMA_GPU_MIN_MIB = int(os.environ.get("OLLAMA_GPU_MIN_MIB", "512"))
+OLLAMA_PS_CACHE_S = 1.0
 IDLE_TIMEOUT = int(os.environ.get("IMAGE_IDLE_TIMEOUT", "600"))  # seconds, default 600
 GPU_WAIT_TIMEOUT = int(os.environ.get("IMAGE_GPU_WAIT_TIMEOUT_SECONDS", "900"))
 GPU_WAIT_POLL_SECONDS = float(os.environ.get("IMAGE_GPU_WAIT_POLL_SECONDS", "3"))
@@ -56,7 +62,7 @@ def estimate_gpu_budget_mib(width: int, height: int, ref_count: int = 0,
 
 
 class GpuBusy(Exception):
-    """Raised when admission fails right now (VRAM budget or gpu.lock)."""
+    """Raised when admission fails right now (ollama runner / VRAM / gpu.lock)."""
 
 
 class GpuWaitTimeout(Exception):
@@ -66,6 +72,37 @@ class GpuWaitTimeout(Exception):
         self.waited_s = waited_s
         self.last_reason = last_reason
         super().__init__(f"waited {waited_s:.1f}s for GPU: {last_reason}")
+
+
+_ps_cache = {"t": 0.0, "mib": 0, "ok": True}
+
+
+def ollama_gpu_runner_mib() -> int:
+    """Total size_vram of Ollama models currently resident (1s cache).
+
+    Unreachable service counts as 0 (no runner can exist; VRAM admission
+    remains the second layer of protection).
+    """
+    now = time.time()
+    if now - _ps_cache["t"] < OLLAMA_PS_CACHE_S:
+        return int(_ps_cache["mib"])
+    total = 0
+    try:
+        with urllib.request.urlopen(OLLAMA_PS_URL, timeout=3) as r:
+            data = json.load(r)
+        for m in data.get("models", []):
+            total += int(m.get("size_vram", 0) or 0)
+        _ps_cache["ok"] = True
+    except Exception:
+        total = 0
+        _ps_cache["ok"] = False
+    _ps_cache["t"] = now
+    _ps_cache["mib"] = total
+    return total
+
+
+def ollama_gpu_active() -> bool:
+    return ollama_gpu_runner_mib() >= OLLAMA_GPU_MIN_MIB
 
 
 class InferenceBusy(Exception):
@@ -86,16 +123,24 @@ class ModelManager:
         self.last_load_seconds: float | None = None
         self._lease_fd: int | None = None
         self.waiting_for_gpu = False  # True while >=1 request is in WAITING_FOR_GPU
+        self.blocked_by = "none"  # none | ollama | zrald | gpu_memory (last wait reason)
 
-    # ---------- GPU admission (VRAM budget, not "ollama empty") ----------
+    # ---------- GPU admission (strict ollama exclusion + VRAM budget) ----------
     @staticmethod
     def _gpu_admission(budget_mib: int) -> None:
-        """Allow iff free VRAM for this process >= budget + safety margin.
+        """ALLOW_IMAGE = ollama_gpu_runner_empty AND vram_admission_pass
+        (gpu.lock is acquired by the caller between the two admission calls).
 
-        others = every compute process except this pid (ollama runner, zrald
-        llama-server, desktop). Our own residual context is reusable and is
-        not counted against us. Raises GpuBusy with the reason otherwise.
+        Layer 1 (strict policy): any resident Ollama model above the
+        threshold -> GpuBusy -> WAITING_FOR_GPU (never 503 GPU_BUSY).
+        Layer 2: free VRAM for this process >= budget + safety margin.
+        others = every compute process except this pid (desktop, zrald
+        llama-server, ollama runner...). Our own residual is reusable.
         """
+        runner_mib = ollama_gpu_runner_mib()
+        if runner_mib >= OLLAMA_GPU_MIN_MIB:
+            raise GpuBusy(
+                f"ollama gpu runner active ({runner_mib}MiB resident)")
         try:
             gpu_csv = subprocess.run(
                 ["nvidia-smi", "--query-gpu=memory.total,memory.used",
@@ -223,6 +268,7 @@ class ModelManager:
                 waited = time.time() - t0
                 if entered:
                     self.waiting_for_gpu = False
+                    self.blocked_by = "none"
                     print(f"[gpu-wait] admitted after {waited:.1f}s "
                           f"(budget={budget_mib}MiB)", flush=True)
                 return waited
@@ -231,8 +277,15 @@ class ModelManager:
                 if not entered:
                     entered = True
                     self.waiting_for_gpu = True
+                    if "ollama gpu runner active" in last_reason:
+                        self.blocked_by = "ollama"
+                    elif "lease held by" in last_reason:
+                        self.blocked_by = "zrald"
+                    else:
+                        self.blocked_by = "gpu_memory"
                     print(f"[gpu-wait] WAITING_FOR_GPU budget={budget_mib}MiB "
-                          f"timeout={timeout_s}s reason: {last_reason}", flush=True)
+                          f"blocked_by={self.blocked_by} timeout={timeout_s}s "
+                          f"reason: {last_reason}", flush=True)
                 if time.time() >= deadline:
                     self.waiting_for_gpu = False
                     waited = time.time() - t0

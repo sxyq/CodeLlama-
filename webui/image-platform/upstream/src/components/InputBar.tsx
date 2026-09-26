@@ -495,7 +495,7 @@ export default function InputBar() {
         { label: `标准 · ${modelProfile.qualitySteps.standard} 步`, value: 'medium' },
         { label: `高质量 · ${modelProfile.qualitySteps.high} 步（官方推荐）`, value: 'high' },
         ...(modelProfile.recommendedHighSteps > 40
-          ? [{ label: `超高质量 · ${modelProfile.recommendedHighSteps} 步`, value: 'max' }]
+          ? [{ label: `超高质量（实验性） · ${modelProfile.recommendedHighSteps} 步`, value: 'max' }]
           : []),
       ]
     : [

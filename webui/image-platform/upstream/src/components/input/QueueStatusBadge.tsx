@@ -8,6 +8,23 @@ interface QueueStatus {
   queue: { running: number; pending: number; /** >=1 个请求正在等待 GPU 准入 */ waiting_for_gpu?: number; max_pending: number }
   /** 后端服务能力（capability.as_dict()），用于覆盖 lib/modelProfile.ts 的静态镜像 */
   capability?: unknown
+  /** 调度快照：blocked_by ∈ none|ollama|zrald|gpu_memory（无 IP/PID 等敏感信息） */
+  scheduler?: { state?: string; blocked_by?: string; image_running?: boolean; ollama_running?: boolean; zrald_running?: boolean }
+}
+
+/** 用户可读的调度状态（任务书 §21）：等待 Ollama / 等待 Zrald / 等待 GPU / 正在生成 / 队列中 */
+function schedulerText(data: QueueStatus): string {
+  const sch = data.scheduler
+  if (sch?.state === 'waiting_for_gpu' || data.queue.waiting_for_gpu) {
+    const by = sch?.blocked_by
+    if (by === 'ollama') return ' · 等待 Ollama'
+    if (by === 'zrald') return ' · 等待 Zrald'
+    if (by === 'gpu_memory') return ' · 等待 GPU'
+    return ' · 等待 GPU'
+  }
+  if (data.queue.running > 0) return ' · 正在生成'
+  if (data.queue.pending > 0) return ' · 队列中'
+  return ''
 }
 
 /**
@@ -52,7 +69,7 @@ export default function QueueStatusBadge() {
   return (
     <span className="text-xs text-gray-400 dark:text-gray-500">
       队列 {status.queue.running}/{status.queue.pending}
-      {status.queue.waiting_for_gpu ? ' · 等待GPU中' : ''}
+      {schedulerText(status)}
       {' · '}{status.model_loaded ? '模型已载入' : '模型未载入'}
     </span>
   )

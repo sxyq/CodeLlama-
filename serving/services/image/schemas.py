@@ -54,6 +54,9 @@ class StatusResponse(BaseModel):
     queue: QueueStats
     # service capability (limits/presets/features) — single source for UI profiles
     capability: dict
+    # scheduler snapshot: state / blocked_by(none|ollama|zrald|gpu_memory) /
+    # image_running / ollama_running / zrald_running (no client identifiers)
+    scheduler: dict
 
 
 class ErrorResponse(BaseModel):

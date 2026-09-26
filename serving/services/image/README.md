@@ -14,8 +14,9 @@
 | Lazy load | 首个排队成功的请求才 `DiffusionPipeline.from_pretrained` |
 | BF16 + CPU offload | torch_dtype=bfloat16 + enable_model_cpu_offload() |
 | GPU lock | state/gpu.lock（flock LOCK_EX\|LOCK_NB，文件常驻不 unlink），跨服务互斥 |
-| Ollama 冲突 | **VRAM 预算 admission**（free VRAM ≥ 请求预算 + 安全余量，Ollama 常驻但余量足够 → 直接放行），不再按 `/api/ps` 一刀切；预算由 `estimate_gpu_budget_mib()` 按实测标定 |
-| GPU 等待队列 | admission/锁不满足 → **WAITING_FOR_GPU**（不持 gpu.lock，每 `IMAGE_GPU_WAIT_POLL_SECONDS`≈3s 重试）；超过 `IMAGE_GPU_WAIT_TIMEOUT_SECONDS`（默认900s）→ 503 `GPU_WAIT_TIMEOUT`「等待 GPU 超时」；正常排队不再返回 GPU_BUSY |
+| Ollama 冲突 | **严格互斥**：`ALLOW_IMAGE = ollama_gpu_runner_empty AND vram_admission_pass AND gpu.lock`（`/api/ps` size_vram≥512MiB 即 OLLAMA_GPU_ACTIVE → WAITING_FOR_GPU；VRAM 预算+3072MiB 余量为第二层；`OLLAMA_PS_URL` 可指网关） |
+| Ollama GPU Gateway | `serving/services/ollama/gateway.py`：0.0.0.0:11434 → backend 127.0.0.1:11435；GPU 完成类端点在 Image 占槽期间排队等待；embed 类缺省注入 keep_alive=0（显式值保留） |
+| GPU 等待队列 | admission（ollama/锁/VRAM）不满足 → **WAITING_FOR_GPU**（不持 gpu.lock，3s 重试）；超 `IMAGE_GPU_WAIT_TIMEOUT_SECONDS`（900s）→ 503 `GPU_WAIT_TIMEOUT`；`IMAGE_QUEUE_TIMEOUT_SECONDS=1200` ≥ gpu wait（无先任务等GPU时后任务先超时） |
 | Idle unload | `IMAGE_IDLE_TIMEOUT`（600s）无请求自动卸载；推理进行中跳过本轮（inference guard） |
 | 手工卸载 | POST /unload；推理进行中 → **409 INFERENCE_BUSY**（不释放 gpu.lock） |
 | inference guard | `ModelManager._inference_lock`：generate/edit 全程持有（ensure_loaded + pipeline + 结果编码）；unload/watcher 非阻塞抢锁，抢不到就拒绝 |
@@ -33,7 +34,9 @@
 ## API
 
 - GET  /health
-- GET  /status → 含 `queue:{running,pending,waiting_for_gpu,max_pending}`（旧字段保留）
+- GET  /status → 含 `queue:{running,pending,waiting_for_gpu,max_pending}` 与
+  `scheduler:{state,blocked_by,image_running,ollama_running,zrald_running}`
+  （state=idle|queued|running|waiting_for_gpu；blocked_by=none|ollama|zrald|gpu_memory，无 IP/PID）
 - POST /v1/images/generations → `data[].b64`（旧）+ `data[].b64_json`（上游）
 - POST /v1/images/edits（multipart）→ `data[].b64_json/path/width/height`
 - POST /unload

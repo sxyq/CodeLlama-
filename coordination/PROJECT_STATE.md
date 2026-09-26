@@ -1,32 +1,27 @@
 # PROJECT_STATE
 
 更新时间：2026-09-27  
-Task: IMAGE-GPU-WAIT-QUEUE-AND-MAX-STEPS-001
+Task: GPU-SCHEDULER-STRICT-OLLAMA-IMAGE-001
 
 | 项 | 值 |
 |---|---|
 | Experiment ID | DEFAULT-LORA-001 |
-| 当前阶段 | GPU WAIT QUEUE + MAX STEPS COMPLETE（待 Commander 审阅） |
+| 当前阶段 | STRICT OLLAMA/IMAGE SCHEDULER COMPLETE（待 Commander 审阅） |
 | VLLM_RUNNING | NO（8000 CLOSED） |
-| ZRALD :8010 | RUNNING（未改动；本轮仅作为 wait 测试对象被正常触发 spawn/idle 释放） |
-| OLLAMA :11434 | RUNNING（未改；外部客户端周期 embed 载入仍在） |
-| IMAGE :8011 | RUNNING（VRAM 预算 admission + WAITING_FOR_GPU 队列 + timeout900；单实例；unloaded/FREE） |
-| WEBUI :8020 | RUNNING（slider1-200、Ultra120、动态提示、预计耗时、等待GPU徽标；dist 已重建） |
-| GPU_WAIT_QUEUE | admission=free≥budget(实测标定)+3072MiB 余量；不持锁等待；3s 轮询；超时 503 GPU_WAIT_TIMEOUT |
-| STATUS_QUEUE | {running, pending, waiting_for_gpu, max_pending} |
-| E2E_A_ZRALD | PASS（租约原因等待600.9s → 同请求自动200，image 侧锁全程 null） |
-| E2E_B_OLLAMA | PASS（embed 驻留 t2i 直接200，零 gpu-wait 日志，冷加载6.47s） |
-| E2E_C_OLLAMA | PASS（5ref2K 等待→资源变化→同请求自动200；等待期 image VRAM 恒564MiB） |
-| E2E_TIMEOUT | PASS（30s→503 GPU_WAIT_TIMEOUT「等待 GPU 超时（30s）」，已恢复900） |
-| STEPS_MATRIX | 24-200 八档全200；img 峰值31,386-31,528（差0.45%）→ STEPS_VRAM_SCALING=MINIMAL |
-| QUALITY_PLATEAU_STEP | 120（160倒退、200未超越） |
-| RECOMMENDED_HIGH_STEP | 120（Ultra 档=超高质量·120步） |
-| MAX_TESTED_STEP | 200；官方推荐保持40 |
-| ULTRA_2K_CONFIRM | 5ref+2048²+120：首次 OOM（embed 中途载入=外部竞态实证）→防御重跑200（715.7s，img45,988） |
-| OLLAMA_EXTERNAL_RACE | STILL_PRESENT（admission 挡不住起跑后载入；生产路径不碰 Ollama） |
-| CANCEL_WAITING | 未实现（需 job id 架构，按任务书§7 记录不阻塞） |
-| BROWSER_E2E | Ultra120 档/slider/自定义80→`steps=80 refs=5`→200/提示/徽标「等待GPU中」实时 ✓ |
-| 前端测试 | 35 文件 / 596 用例全绿，build 通过 |
-| 回归 | 映射5/5、单图/5图编辑、queue、unload 409→200、idle600、TTL1800/300、端口全绿 |
+| ZRALD :8010 | RUNNING（flock 互斥未动，spawn_count=3） |
+| OLLAMA | backend 改绑 **127.0.0.1:11435**（systemd unit 已改，PID2931799，10 模型完整）；**公网口由网关接管** |
+| OLLAMA GATEWAY | `0.0.0.0:11434 → 127.0.0.1:11435`（serving/services/ollama/gateway.py，nohup）：完成类端点等 Image 槽、embed 缺省 keep_alive=0 注入、等待态放行释放请求（BYPASS_RELEASE） |
+| IMAGE :8011 | 严格准入 = runner空 ∧ gpu.lock ∧ VRAM预算+3072MiB；WAITING_FOR_GPU 3s轮询/900s超时；queue timeout **1200**；/status 增 scheduler 块 |
+| WEBUI :8020 | 徽标实时状态（等待 Ollama/正在生成等）、超高质量（实验性）·120、§19 Ultra 说明；dist 已重建；596 用例全绿 |
+| E2E_A（image等ollama） | PASS（blocked_by=ollama → 释放后同请求4.6s admission →200） |
+| E2E_C（chat模型） | PASS（chat200"OK"→等待90.1s→自动200；兼作 chat 回归） |
+| E2E_B（核心） | PASS（5ref+2048²+120 运行中：模拟embed扣720.1s、ps全程空、图200、OOM零新增、完成后embed自动200；真实LAN客户端被扣56/618/720s） |
+| KEEP_ALIVE=0 兼容 | PASS（4096维向量、即卸、二调正常；显式值保留实测） |
+| Bypass修复 | 等待态释放请求0.16-0.19s放行；本地 harness 7/7 |
+| TIMEOUT修复 | queue 480→1200 ≥ gpu wait 900 |
+| OOM | 本轮0次（计数稳定212；00:15 事件=旧策略孤儿进程） |
+| 回归 | t2i/5ref/2K/Ultra120/custom200(200→201→400)/embed/chat/Zrald/queue/unload409→200/TTL/端口 全 PASS |
+| 运维规约 | `ollama stop` CLI 无效（/api/stop 404 空转）→ 一律 API `keep_alive:0` |
+| 已知限制 | WebUI profile timeout600 < gpu wait900（长等待前端先断、服务端孤儿完成）；见报告§13 |
 | Git | 见 LAST_HANDOFF |
 | Next Action | WAIT FOR COMMANDER REVIEW |

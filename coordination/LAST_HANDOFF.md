@@ -1,82 +1,73 @@
 # Last Agent Handoff
 
 Updated At: 2026-09-27  
-Last Task ID: IMAGE-GPU-WAIT-QUEUE-AND-MAX-STEPS-001  
+Last Task ID: GPU-SCHEDULER-STRICT-OLLAMA-IMAGE-001  
 Status: COMPLETE — AWAITING COMMANDER REVIEW（Git 结果见最终回复 / git log）
 
 ## Completed
 
-- **GPU 等待队列（功能A）**：`model_manager.py` 重写 GPU 准入：
-  - `estimate_gpu_budget_mib(w,h,refs,n)` 实测标定预算（锚点误差≤1.7GB）
-  - `_gpu_admission`：free_for_us（总显存−其他进程）≥ budget + `IMAGE_GPU_SAFETY_MARGIN_MIB=3072`；
-    **不再要求 Ollama 为空**（embed 驻留但预算够 → 直接放行）
-  - `ensure_loaded_waiting`：admission→flock→二次 admission；失败进入 WAITING_FOR_GPU
-    （每3s重试、**不持 gpu.lock**）；`IMAGE_GPU_WAIT_TIMEOUT_SECONDS=900` 超时 → 503
-    `GPU_WAIT_TIMEOUT`（消息「等待 GPU 超时（Ns）」）
-  - `GET /status.queue` 新增 `waiting_for_gpu`；`[gpu-wait]` 日志记录进入/放行/超时
-  - env 三件套已入 `service.env.example` 与服务器 local env（900/3/3072）
-- **E2E 四项全 PASS**：
-  - A Zrald 持锁：等待原因=`gpu lease held by zrald-manager`、image 锁 null、Zrald idle 释放后
-    `admitted after 600.9s` → 同请求200（无需重提）
-  - B embed 驻留 t2i1024：**直接200**（零 gpu-wait 日志，旧版必503）
-  - C embed 驻留 5ref2K：2.1s 进入等待（budget42676>free34384）、等待期 image VRAM 恒564MiB、
-    资源变化后同请求自动200
-  - 超时：临时30s → 503 `GPU_WAIT_TIMEOUT` 32.8s，日志 TIMEOUT after30.6s；已恢复900
-- **Steps 24-200 矩阵（5refs/1024²/seed42 串行）**：八档全200；img 峰值31,386–31,528（差0.45%）
-  → `STEPS_VRAM_SCALING = MINIMAL`；推理79.8→301.3s；8张图逐张人工查看（10维度，报告§9）
-- **档位结论**：`QUALITY_PLATEAU_STEP=120`、`RECOMMENDED_HIGH_STEP=120`（Ultra）、
-  `MAX_TESTED_STEP=200`；构图随步数**非单调**（24表格 / 40·60·100·160稀疏列 / 80·120·200红提纲）已如实记录
-- **Ultra 2K 复核**：5ref+2048²+120 首次因 embed 中途载入 OOM（=外部竞态实证）；
-  测试环境防御重跑 **200**（715.7s，img45,988，成图为完整分子式图）
-- **Profile/UI（功能B + §22-26）**：
-  - 后端 `capability.py`：`QUALITY_STEPS["max"]=120`、`/status.capability.steps={official:40,
-    recommended_high:120, max_custom:200}`
-  - 前端 `modelProfile.ts` `RECOMMENDED_HIGH_STEPS=120`（仅 Qwen；通用 Profile 保持40不开 Ultra——
-    修复过常量泄漏导致 generic 也开 Ultra 的回归，测试596全绿）
-  - 质量下拉新增 `超高质量 · 120 步`（>40 才显示）；步数 = number+slider 1–200 钳制；
-    `生效步数=N`、`步数（自定义）`、>40 高计算成本提示、>100 实验性、`预计耗时 ~Ns（近似）`
-  - 等待徽标：`队列 1/0 · 等待GPU中`（真实等待窗口抓拍）
-- **浏览器 E2E**：挂5图 → 自定义80 → 生效80 → 后端 `[edit] steps=80 explicit=80 refs=5` → **200**
-- **回归全 PASS**：映射5/5（4/24/40/显式覆盖/默认）、单图编辑200、queue（0/65.4s）、
-  unload 活体409→200、idle600、TTL1800/300、steps201→400、8020/8011/8010/11434/3000、8000 CLOSED
-- 报告：`reports/IMAGE_GPU_WAIT_QUEUE_AND_MAX_STEPS.md`
+- **Ollama 入口收口（无感迁移）**：unit 改 `OLLAMA_HOST=127.0.0.1:11435`（sudo 密码仅当次 stdin，未落盘）
+  → daemon-reload/restart → 网关 `serving/services/ollama/gateway.py` 占 `0.0.0.0:11434`；
+  LAN/本机客户端零配置切换。7天端点清单（journal sudo）：GPU 类 embed798/generate81/v1chat20/chat15/
+  v1embed7/v1comp3/rerank1/embeddings1；透传 ps1164/tags68/show46 等。真实 LAN 客户端实测穿网关
+  （被扣56/618/720s 后自动完成，注入 keep_alive=0 生效）。
+- **严格互斥**：Image admission 第一层 `/api/ps` runner 空判定（512MiB 阈，不返回 GPU_BUSY）+
+  VRAM 预算+3072MiB 双确认 + flock；网关在 Image 占槽时扣住完成类 Ollama 请求。
+- **BYPASS_RELEASE 修复**：image 仅资源等待时放行 `keep_alive=0` 释放请求（0.16-0.19s），防互等；
+  推理中仍全扣。本地 harness **7/7 PASS**。
+- **timeout 修复**：`IMAGE_QUEUE_TIMEOUT_SECONDS 480→1200`（≥ GPU wait900）。
+- **E2E**：A=Image等ollama（blocked_by=ollama→4.6s自动→200）、C=chat模型（chat200→90.1s→200，
+  兼 chat 回归）、**B=核心**（5ref+2048²+120 运行中 embed 扣720.1s、ps全空、图200、
+  OOM零新增、完成→embed自动200；真实LAN客户端同窗口被扣56/618/720s）。
+- **keep_alive=0 兼容实测**（先于注入启用）：向量4096、即卸、二次调用正常；显式 keep_alive 保留。
+- **/status.scheduler**：`state/blocked_by(none|ollama|zrald|gpu_memory)/image_running/ollama_running/zrald_running`。
+- **UI**：徽标实时 `等待 Ollama`/`正在生成`（实拍）、`超高质量（实验性）·120`、Ultra 完整说明
+  （本机5参考图实验档/非官方推荐/不保证优于40）；自定义1-200 与提示不变；dist 重建；
+  npm test **35文件/596用例**全绿 + build 通过。
+- **回归全 PASS**：t2i、5ref、2K、Ultra120（E2E B）、custom200→200 / steps201→400、embed、chat、
+  Zrald /manager/status、queue 串行（0/65.4s）、unload 活体409→200、TTL1800/300、IDLE600、端口全绿。
+- 报告：`reports/GPU_SCHEDULER_STRICT_OLLAMA_IMAGE.md`
 
 ## Status Flags
 
 | Flag | Value |
 |---|---|
-| GPU_WAIT_QUEUE | PASS（A/B/C + timeout 四项） |
-| waiting_for_gpu 字段 | queue.waiting_for_gpu 上线，UI 徽标实时显示 |
-| STEPS_VRAM_SCALING | MINIMAL（24→200 img 差0.45%） |
-| QUALITY_PLATEAU / ULTRA | 120 / 120（官方40 不变，max 测试200） |
-| OLLAMA_EXTERNAL_RACE | STILL_PRESENT（首次2K复核 OOM 实证；生产路径不碰 Ollama） |
-| CANCEL_WAITING | 未实现（需 job id，按§7 记录） |
-| OOM 事件 | 本轮1次（外部竞态，2K@120首次）；防御重跑后零新增；非人为制造 |
-| GIT | 见最终回复（`feat: add gpu wait queue and extended image quality steps` → push） |
+| OLLAMA/IMAGE POLICY | STRICT SERIAL（runner空 ∧ lock ∧ VRAM双确认；网关扣完成类） |
+| OLLAMA TOPOLOGY | backend 127.0.0.1:11435 ← gateway 0.0.0.0:11434（PID2931799） |
+| QUEUE/GPU WAIT TIMEOUT | 1200 / 900（≥ 关系成立） |
+| CUDA OOM（本轮） | NO（计数212不变；00:15=旧策略孤儿） |
+| HOL POLICY | 保留占槽等待（报告§7 论证） |
+| CLIENT TIMEOUT GAP | WebUI600 < wait900（限制项，见报告§13.1） |
+| 运维 | `ollama stop` CLI 无效（404空转）→ API `keep_alive:0` |
+| GIT | 见最终回复（`feat: serialize ollama and image gpu workloads` → push） |
 
 ## 服务终态
 
 | 端口 | 状态 |
 |---|---|
-| 8010 Zrald | RUNNING（未动，spawn_count=3 为测试触发，idle 正常） |
-| 8011 Image | RUNNING（**单 uvicorn 实例**，timeout900，unloaded，锁 FREE，idle600） |
-| 8020 WebUI | RUNNING（dist=wait-queue+Ultra 版） |
-| 11434 Ollama | RUNNING（未改，embed 周期驻留仍在） |
-| 3000 OWUI | RUNNING（未动） |
+| 8010 Zrald | RUNNING（未动，manager 正常，lease 空闲） |
+| 8011 Image | RUNNING（严格准入，unloaded/FREE，idle600，queue1/8/480→timeout1200） |
+| 8020 WebUI | RUNNING（dist=等待状态+Ultra实验档版） |
+| 11434 | **网关**（→127.0.0.1:11435）；Ollama 仅回环 |
+| 11435 | Ollama backend（回环，10模型完整） |
+| 3000 OWUI | RUNNING（经 localhost:11434 → 网关，健康200） |
 | 8000 vLLM | CLOSED |
 | GPU | ~15.2GB（embed 水位），gpu.lock FREE |
-| env | IDLE=600 / TTL=1800/300 / QUEUE=1/8/480 / **GPU_WAIT=900s, poll=3s, margin=3072MiB** |
+| env | IDLE600 / TTL1800/300 / QUEUE_TIMEOUT**1200** / GPU_WAIT900·3s·margin3072 |
 
 ## 环境要点（下轮必读）
 
-- **测试期临时脚本必须收尾**：本轮 defender/unblocker 忘关导致请求被提前放行——用完立即杀；
-  杀脚本进程同样注意 pgrep 自匹配（括号技巧 + 命令行不得含明文模式）。
-- **SIGTERM 在 CUDA 推理中可能延迟生效**：杀服务后必须 `pgrep` 确认进程数=1，必要时 SIGKILL；
-  出现双 uvicorn 时先等在途任务自然结束再收敛单实例。
-- **embed 竞态**：admission 只保护起跑前；高预算请求（5ref×2K）在 embed 活跃期可能中途 OOM——
-  测试高预算组合时用"运行中即时安全释放"防御（仅测试手段，生产代码不碰 Ollama）。
-- 其余沿用前轮：pkill 自匹配、IAB filechooser 不可用、本机 rollup 坏、curl --noproxy、
-  服务器 Node 于 `env/node-v22.23.3-linux-x64/bin`、真实 IP 永不入 Git。
+- **Ollama 拓扑变了**：外部一律打11434（网关），backend 只在回环11435；查后端直连11435、查入口看
+  `~/ai-serving/logs/ollama/gateway.log`（含对端 IP）。journal 的源IP 现为网关回环。
+- **卸载 Ollama 模型用 API**：`POST /api/embed|chat {"keep_alive":0}`；`ollama stop` CLI 在本服务器
+  会空转到超时（/api/stop 404），不要用它做测试释放。
+- **网关日志关键词**：`HELD`=扣住、`BYPASS_RELEASE`=等待态放行释放、`HOLD_TIMEOUT`、`KEEP_ALIVE_INJECT`。
+- **sudo 模式**：密码仅经当次 ssh heredoc 首行 stdin（`IFS= read -r PW; … sudo -S -v`），永不落盘；
+  heredoc 第一行必须是密码（本轮曾三次漏写首行导致空转，教训固化）。
+- **前端 fetch 超时600s**：浏览器等待类请求超600s 会前端失败而服务端孤儿完成——测长等待要么服务端
+  内定时释放，要么接受孤儿语义。
+- 其余沿用：pkill 括号技巧、IAB filechooser 不可用、本机 rollup 坏、curl --noproxy、Node 于
+  `env/node-v22.23.3-linux-x64/bin`、真实IP永不入Git。
 
 ## Exact Next Action
 
@@ -84,6 +75,7 @@ WAIT FOR COMMANDER REVIEW
 
 ## Do Not
 
-- 未授权不重启/升级 Ollama、不动 vLLM YAML、不动 Zrald/llama.cpp/Open WebUI/CUDA/Clash/网络
-- 不在 embed 活跃期跑 5ref×2K 高预算组合（除非有防御/空闲窗）
-- 测试图片/tmp/logs/模型/node_modules/dist 本地配置/真实 IP 不入 Git；禁 git add -A
+- 未授权不升级/重装 Ollama、不动模型、不删模型；systemd unit 已按本轮授权改绑，勿回改0.0.0.0
+- 不动 vLLM/Zrald/llama.cpp/Open WebUI/CUDA/Clash/网络
+- 网关与 strict admission 是互斥闭环，勿单独关闭一侧
+- 测试图/tmp/logs/模型/node_modules/dist本地配置/真实IP不入Git；禁 git add -A

@@ -13,9 +13,11 @@ from __future__ import annotations
 
 import base64
 import io
+import json
 import math
 import os
 import time
+import urllib.request
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
@@ -40,6 +42,7 @@ from model_manager import (
     GpuWaitTimeout,
     IDLE_TIMEOUT,
     InferenceBusy,
+    ollama_gpu_active,
 )
 from queue_manager import IMAGE_QUEUE, QueueFull, QueueTimeout
 from schemas import (
@@ -188,6 +191,48 @@ def _int_or_none(value) -> int | None:
         raise _bad("INVALID_REQUEST", f"expected an integer, got {value!r}")
 
 
+# --- scheduler snapshot helpers (status endpoint) --------------------------
+_ZRALD_MANAGER_URL = "http://127.0.0.1:8010/manager/status"
+_zrald_cache = {"t": 0.0, "held": False}
+
+
+def _zrald_running() -> bool:
+    """True when the Zrald lease manager holds gpu.lock (2s cache)."""
+    now = time.time()
+    if now - _zrald_cache["t"] < 2.0:
+        return _zrald_cache["held"]
+    held = False
+    try:
+        with urllib.request.urlopen(_ZRALD_MANAGER_URL, timeout=2) as r:
+            held = bool(json.load(r).get("lease_held"))
+    except Exception:
+        held = False
+    _zrald_cache["t"] = now
+    _zrald_cache["held"] = held
+    return held
+
+
+def _scheduler_snapshot(q: dict) -> dict:
+    running = int(q.get("running", 0) or 0)
+    waiting = int(q.get("waiting_for_gpu", 0) or 0)
+    if running and waiting:
+        state = "waiting_for_gpu"
+    elif running:
+        state = "running"
+    elif int(q.get("pending", 0) or 0):
+        state = "queued"
+    else:
+        state = "idle"
+    return {
+        "state": state,
+        "blocked_by": MANAGER.blocked_by if waiting else "none",
+        "image_running": running >= 1,
+        "ollama_running": ollama_gpu_active(),
+        "zrald_running": _zrald_running(),
+    }
+
+
+
 # --- quality -> inference steps (single helper, shared by both endpoints) --
 # table lives in capability.py (single source of truth with the UI profile)
 QUALITY_STEPS = capability.QUALITY_STEPS
@@ -220,16 +265,15 @@ def status() -> StatusResponse:
             lock = GPU_LOCK_PATH.read_text().strip()
         except OSError:
             lock = "held"
+    q = {**IMAGE_QUEUE.stats(), "waiting_for_gpu": int(bool(MANAGER.waiting_for_gpu))}
     return StatusResponse(
         model_loaded=MANAGER.loaded,
         idle_timeout_seconds=IDLE_TIMEOUT,
         last_used_age_seconds=age,
         gpu_lock=lock,
-        queue={
-            **IMAGE_QUEUE.stats(),
-            "waiting_for_gpu": int(bool(MANAGER.waiting_for_gpu)),
-        },
+        queue=q,
         capability=capability.as_dict(),
+        scheduler=_scheduler_snapshot(q),
     )
 
 

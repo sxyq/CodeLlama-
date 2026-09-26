@@ -61,7 +61,7 @@ bash $HOME/codellama-lora/scripts/run_training.sh
 | Image capability | `services/image/capability.py` 单一配置源：512–2752 边 / ≤4,300,800px / 宽高比≤1.8 / 16倍数 / 5 参考图 / quality fast4·standard24·high40 / 官方8档预设；前端 `modelProfile.ts` 镜像并从 `/status.capability` 运行时覆盖 |
 | Image quality→steps | 统一 helper：显式 `num_inference_steps` > `quality` > 24 默认；fast/low=4，standard/medium/auto=24，high/xhigh/max=40；响应含 `effective_steps` 与 `queue_wait/load/inference/total_seconds`（`generation_seconds` 兼容=inference） |
 | Image inference guard | `model_manager._inference_lock`：generate/edit 全程持有；推理中 `/unload` → 409，idle watcher 跳过本轮，gpu.lock 不提前释放 |
-| Image 统一队列 | `services/image/queue_manager.py`：max_concurrent=1 / max_pending=8 / timeout=480s；超限 429 `QUEUE_FULL`；与 gpu.lock 顺序：queue → flock → 推理 |
+| Image 统一队列 | `services/image/queue_manager.py`：max_concurrent=1 / max_pending=8 / **queue timeout=1200s（≥ GPU wait 900）**；超限 429 `QUEUE_FULL`；顺序：queue → GPU 等待（WAITING_FOR_GPU，3s 轮询）→ flock → 推理 |
 | Image 临时输出 | `$HOME/ai-serving/tmp/image-output/`（TTL 1800s，300s 扫描，启动即扫；env：`IMAGE_OUTPUT_RETENTION_SECONDS` / `IMAGE_CLEANUP_INTERVAL_SECONDS`） |
 | Image CORS | env `IMAGE_ALLOWED_ORIGINS`（逗号分隔精确 origin，**代码内无真实 IP**；真实值仅在 `service.local.env`，永不入 Git） |
 | WebUI 图像平台 | port **8020**（`webui/image-platform/scripts/serve_static.py` 服务 `dist/`；构建：`bash scripts/build_webui.sh`，Node 于 `env/node-v22.23.3-linux-x64/`） |
@@ -70,7 +70,8 @@ bash $HOME/codellama-lora/scripts/run_training.sh
 | 统一 GPU lease | `$HOME/ai-serving/state/gpu.lock`（flock 原子锁，Image 与 Zrald 共用；Ollama 直连客户端不受约束） |
 | Image 模型 | `/data/vllm/ImageModel/Qwen-Image-2.1`（diffusers，local_files_only） |
 | Zrald GGUF | `/data/vllm/Zrald-Qwen3.8-27B-v2/zraldqwen3.8-accuracy.gguf`（已导入 Ollama alias `qwen3.8-27b-zrald-accuracy`；**推理暂受引擎限制**） |
-| Ollama | port 11434，systemd `ollama.service`，internal store 由 Ollama 自管 |
+| Ollama | **backend 仅回环127.0.0.1:11435**（unit `OLLAMA_HOST` 已改），公网口由网关接管；internal store 由 Ollama 自管；释放模型用 API `keep_alive:0`（`ollama stop` CLI 本机404空转，勿用） |
+| Ollama GPU 网关 | `services/ollama/gateway.py`：`0.0.0.0:11434 → 127.0.0.1:11435`；Image 占槽时扣完成类端点（embed/chat/generate/v1*），image 仅资源等待时放行 `keep_alive=0` 释放（BYPASS_RELEASE）；embed 缺省注入 keep_alive=0；启动：`bash scripts/ollama/start_ollama_gateway.sh`，日志 `logs/ollama/gateway.log`（含对端IP） |
 | Open WebUI | port 3000 |
 
 常用只读核验：
@@ -78,15 +79,15 @@ bash $HOME/codellama-lora/scripts/run_training.sh
 ```bash
 curl -sS http://127.0.0.1:11434/api/tags
 curl -sS http://127.0.0.1:8011/health
-curl -sS http://127.0.0.1:8011/status     # 含 queue.{running,pending,max_pending}
 curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8020/
-curl -sS http://127.0.0.1:11434/api/ps    # 有 >1GB size_vram 模型时 Image 冷加载会 503 GPU_BUSY
+curl -sS http://127.0.0.1:8011/status     # queue.{running,pending,waiting_for_gpu} + scheduler.{state,blocked_by}
+curl -sS http://127.0.0.1:11434/api/ps    # runner 驻留时 Image 等待（WAITING_FOR_GPU，900s 超时→503 GPU_WAIT_TIMEOUT），不再直接 GPU_BUSY
 nvidia-smi
 ```
 
 注意：
 
-- LAN 客户端会周期调用 `/api/embed`，`qwen3-embedding:8b` 可能长期驻留 ~14.4GB；Image 需加载的测试要抓 `/api/ps` 空闲窗口，不绕开该保护。
+- LAN 客户端经**网关**周期调用 `/api/embed`（缺省注入 keep_alive=0，驻留窗口秒级）；网关在 Image 运行期间会扣住新 embed——严格互斥由 Image admission + 网关共同保证，勿绕开。
 - 杀进程勿用 `pkill -f "uvicorn server:app"`（会误杀含同串的自身会话）；用 `pgrep -f "[s]erver:app"` 取 PID 后 kill，并与启动分两次会话。
 
 ## 禁止写入本文

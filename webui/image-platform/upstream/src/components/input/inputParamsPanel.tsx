@@ -178,7 +178,7 @@ export default function InputParamsPanel({
             ? <>fal.ai 不支持 <code className="rounded bg-white/10 px-1 py-0.5 font-mono">auto</code> 质量参数</>
             : activeProfile.codexCli
             ? 'Codex CLI 不支持质量参数'
-            : <>官方高质量 / {qualitySteps.high} steps（快速 {qualitySteps.fast} · 标准 {qualitySteps.standard}）{ultraSteps ? ` · 超高质量 ${ultraSteps}` : ''}</>}
+            : <>官方高质量 / {qualitySteps.high} steps（快速 {qualitySteps.fast} · 标准 {qualitySteps.standard}）{ultraSteps ? ` · 超高质量（实验性） ${ultraSteps}：本机 5 参考图测试中表现较好的实验档，不是官方推荐值，也不保证所有 prompt/seed 都优于 ${qualitySteps.high}；官方推荐 ${qualitySteps.high} steps` : ''}</>}
         />
       </label>
       <label className="flex flex-col gap-0.5">
