@@ -46,7 +46,8 @@ def main() -> int:
             # the upstream UI refuses to submit with an empty API key
             "apiKey": "internal-no-auth",
             "isDefault": m["id"] == picked["id"],
-            "timeout": 600,
+            # aligned with backend IMAGE_QUEUE_TIMEOUT_SECONDS=1200 (GPU wait 900)
+            "timeout": 1200,
         })
 
     out_path.parent.mkdir(parents=True, exist_ok=True)

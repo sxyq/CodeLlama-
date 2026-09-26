@@ -13,6 +13,7 @@ import {
   getDataUrlDecodedByteSize,
   getDataUrlEncodedByteSize,
   getResponsesImageResultBase64,
+  imageRequestTimeoutMs,
   isDataUrl,
   isHttpUrl,
   mergeActualParams,
@@ -496,7 +497,7 @@ async function callImagesApiSingle(opts: CallApiOptions, profile: ApiProfile): P
   const paths = createOpenAICompatiblePaths()
 
   const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), profile.timeout * 1000)
+  const timeoutId = setTimeout(() => controller.abort(), imageRequestTimeoutMs(profile.timeout))
 
   try {
     let response: Response
@@ -931,7 +932,7 @@ async function callCustomHttpImageApi(opts: CallApiOptions, profile: ApiProfile,
   const isEdit = inputImageDataUrls.length > 0
   const mime = MIME_MAP[params.output_format] || 'image/png'
   const controller = new AbortController()
-  let timeoutId: ReturnType<typeof setTimeout> | null = setTimeout(() => controller.abort(), profile.timeout * 1000)
+  let timeoutId: ReturnType<typeof setTimeout> | null = setTimeout(() => controller.abort(), imageRequestTimeoutMs(profile.timeout))
 
   try {
     const proxyConfig = readClientDevProxyConfig()
@@ -1034,7 +1035,7 @@ async function callResponsesImageApiSingle(opts: CallApiOptions, profile: ApiPro
   const useApiProxy = shouldUseApiProxy(profile.apiProxy, proxyConfig)
   const requestHeaders = createRequestHeaders(profile)
   const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), profile.timeout * 1000)
+  const timeoutId = setTimeout(() => controller.abort(), imageRequestTimeoutMs(profile.timeout))
 
   try {
     if (opts.maskDataUrl) {

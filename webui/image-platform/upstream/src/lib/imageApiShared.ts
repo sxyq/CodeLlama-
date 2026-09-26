@@ -9,6 +9,17 @@ export const MIME_MAP: Record<string, string> = {
 
 export const MAX_MASK_EDIT_FILE_BYTES = 50 * 1024 * 1024
 export const MAX_IMAGE_INPUT_PAYLOAD_BYTES = 512 * 1024 * 1024
+/**
+ * Image generation/edit 请求超时（唯一来源）：1200s。
+ * 与后端对齐：>= IMAGE_GPU_WAIT_TIMEOUT_SECONDS(900)，等于 IMAGE_QUEUE_TIMEOUT_SECONDS(1200)。
+ * 生图与图生图共用；profile.timeout 无法缩短或拉长该值（任务 IMAGE-WEBUI-TIMEOUT-ALIGN-001）。
+ */
+export const IMAGE_REQUEST_TIMEOUT_MS = 1_200_000
+
+/** Image generation/edit 的实际 abort 延迟；profile 值仅作展示，不参与计算。 */
+export function imageRequestTimeoutMs(_profileTimeoutSeconds?: number): number {
+  return IMAGE_REQUEST_TIMEOUT_MS
+}
 export const PROMPT_REWRITE_GUARD_PREFIX = 'Treat everything after this line as one complete image-generation prompt, including the resolution instruction. Follow it exactly without rewriting or omitting anything:'
 
 export interface CallApiOptions {
