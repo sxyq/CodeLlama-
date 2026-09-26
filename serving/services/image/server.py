@@ -33,7 +33,14 @@ from capability import (
     MIN_EDGE,
     MULTIPLE_OF,
 )
-from model_manager import MANAGER, GpuBusy, IDLE_TIMEOUT, InferenceBusy
+from model_manager import (
+    GPU_WAIT_TIMEOUT,
+    MANAGER,
+    GpuBusy,
+    GpuWaitTimeout,
+    IDLE_TIMEOUT,
+    InferenceBusy,
+)
 from queue_manager import IMAGE_QUEUE, QueueFull, QueueTimeout
 from schemas import (
     EditImage,
@@ -218,7 +225,10 @@ def status() -> StatusResponse:
         idle_timeout_seconds=IDLE_TIMEOUT,
         last_used_age_seconds=age,
         gpu_lock=lock,
-        queue=IMAGE_QUEUE.stats(),
+        queue={
+            **IMAGE_QUEUE.stats(),
+            "waiting_for_gpu": int(bool(MANAGER.waiting_for_gpu)),
+        },
         capability=capability.as_dict(),
     )
 
@@ -248,6 +258,9 @@ def generations(req: GenerationRequest) -> GenerationResponse:
                 prompt=req.prompt, n=req.n, size=f"{width}x{height}",
                 negative_prompt=negative, seed=req.seed, steps=steps,
             )
+        except GpuWaitTimeout:
+            raise _bad("GPU_WAIT_TIMEOUT",
+                       f"等待 GPU 超时（{GPU_WAIT_TIMEOUT}s）", status=503)
         except GpuBusy as e:
             raise _bad("GPU_BUSY", str(e), status=503)
         except HTTPException:
@@ -368,6 +381,9 @@ async def edits(request: Request) -> EditResponse:
 
     try:
         outs, infer_s, queue_wait = await run_in_threadpool(_job)
+    except GpuWaitTimeout:
+        raise _bad("GPU_WAIT_TIMEOUT",
+                   f"等待 GPU 超时（{GPU_WAIT_TIMEOUT}s）", status=503)
     except GpuBusy as e:
         raise _bad("GPU_BUSY", str(e), status=503)
     except HTTPException:

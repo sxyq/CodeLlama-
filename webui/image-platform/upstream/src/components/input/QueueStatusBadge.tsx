@@ -5,7 +5,7 @@ import { useStore } from '../../store'
 
 interface QueueStatus {
   model_loaded: boolean
-  queue: { running: number; pending: number; max_pending: number }
+  queue: { running: number; pending: number; /** >=1 个请求正在等待 GPU 准入 */ waiting_for_gpu?: number; max_pending: number }
   /** 后端服务能力（capability.as_dict()），用于覆盖 lib/modelProfile.ts 的静态镜像 */
   capability?: unknown
 }
@@ -52,6 +52,7 @@ export default function QueueStatusBadge() {
   return (
     <span className="text-xs text-gray-400 dark:text-gray-500">
       队列 {status.queue.running}/{status.queue.pending}
+      {status.queue.waiting_for_gpu ? ' · 等待GPU中' : ''}
       {' · '}{status.model_loaded ? '模型已载入' : '模型未载入'}
     </span>
   )

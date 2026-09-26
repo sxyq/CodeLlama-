@@ -40,6 +40,8 @@ class GenerationResponse(BaseModel):
 class QueueStats(BaseModel):
     running: int
     pending: int
+    # >=1 request currently blocked in WAITING_FOR_GPU (admission not met yet)
+    waiting_for_gpu: int = 0
     max_pending: int
 
 

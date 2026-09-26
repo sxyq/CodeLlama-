@@ -486,6 +486,7 @@ export default function InputBar() {
         : normalizeImageSize(params.size, modelProfile.sizeRule)) || DEFAULT_PARAMS.size
 
   // 质量三档与后端 _resolve_steps 对应，步数按当前模型 Profile：通用 4/24/40，Qwen 同值但带标注
+  // 超高质量档仅在 recommendedHighSteps > 40（官方推荐档之上）时出现，取值见 lib/modelProfile.ts 的 RECOMMENDED_HIGH_STEPS
   const qualityOptions = activeProfile.codexCli
     ? [{ label: 'auto', value: 'auto' }]
     : modelProfile.annotateQualitySteps
@@ -493,6 +494,9 @@ export default function InputBar() {
         { label: `快速 · ${modelProfile.qualitySteps.fast} 步`, value: 'low' },
         { label: `标准 · ${modelProfile.qualitySteps.standard} 步`, value: 'medium' },
         { label: `高质量 · ${modelProfile.qualitySteps.high} 步（官方推荐）`, value: 'high' },
+        ...(modelProfile.recommendedHighSteps > 40
+          ? [{ label: `超高质量 · ${modelProfile.recommendedHighSteps} 步`, value: 'max' }]
+          : []),
       ]
     : [
         { label: '快速', value: 'low' },
@@ -1555,6 +1559,7 @@ export default function InputBar() {
       isFalTextToImage={isFalTextToImage}
       displaySize={displaySize}
       qualityOptions={qualityOptions}
+      referenceImageCount={inputImages.length}
       selectClass={selectClass}
       transparentOutputAvailable={transparentOutputAvailable}
       showTransparentOutputControl={showTransparentOutputControl}

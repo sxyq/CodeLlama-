@@ -156,4 +156,44 @@ describe('applyServerCapability', () => {
     expect(profile.officialResolutions).toHaveLength(8)
     expect(profile.supportsRGBA).toBe(false)
   })
+
+  it('reads the step capability fields and keeps them when later payloads omit them', () => {
+    applyServerCapability({
+      model: 'Qwen-Image-2.1',
+      official_recommended_steps: 48,
+      recommended_high_steps: 64,
+      max_custom_steps: 160,
+    })
+    let profile = getProfileForModel('Qwen-Image-2.1')
+    expect(profile.qualitySteps.high).toBe(48)
+    expect(profile.recommendedHighSteps).toBe(64)
+    expect(profile.maxCustomSteps).toBe(160)
+
+    // 字段缺失时保留上一次的覆盖值
+    applyServerCapability({ model: 'Qwen-Image-2.1', quality_steps: { fast: 4, standard: 24, high: 40 } })
+    profile = getProfileForModel('Qwen-Image-2.1')
+    expect(profile.qualitySteps.high).toBe(40)
+    expect(profile.recommendedHighSteps).toBe(64)
+    expect(profile.maxCustomSteps).toBe(160)
+
+    // 还原静态镜像，避免影响同文件后续用例
+    applyServerCapability({
+      model: 'Qwen-Image-2.1',
+      official_recommended_steps: 40,
+      recommended_high_steps: 40,
+      max_custom_steps: 200,
+      quality_steps: { fast: 4, standard: 24, high: 40 },
+    })
+    profile = getProfileForModel('Qwen-Image-2.1')
+    expect(profile.qualitySteps.high).toBe(40)
+    expect(profile.recommendedHighSteps).toBe(40)
+    expect(profile.maxCustomSteps).toBe(200)
+  })
+
+  it('clamps max_custom_steps from the server to the frontend 1..200 range', () => {
+    applyServerCapability({ model: 'Qwen-Image-2.1', max_custom_steps: 999 })
+    expect(getProfileForModel('Qwen-Image-2.1').maxCustomSteps).toBe(200)
+    applyServerCapability({ model: 'Qwen-Image-2.1', max_custom_steps: 0 })
+    expect(getProfileForModel('Qwen-Image-2.1').maxCustomSteps).toBe(200)
+  })
 })

@@ -55,7 +55,9 @@ bash $HOME/codellama-lora/scripts/run_training.sh
 |---|---|
 | 统一 Serving 目录 | `$HOME/ai-serving/`（configs / services / scripts / state / logs / env / webui / tmp） |
 | Image 服务 | port **8011**（FastAPI，lazy load，idle 600s；启动：`bash $HOME/ai-serving/scripts/image/start_image_service.sh`，内部 source `configs/image/service.local.env` 后 uvicorn） |
-| Image API 端点 | `GET /health` `GET /status`（queue + **capability**：limits/presets/features） `POST /v1/images/generations`（含 `b64_json`） **`POST /v1/images/edits`（multipart `image[]` 1–5 张原生多图，>5 → 400 TOO_MANY_REFERENCE_IMAGES）** `POST /unload`（推理中 → 409 INFERENCE_BUSY） |
+| Image API 端点 | `GET /health` `GET /status`（queue 含 **waiting_for_gpu** + capability 含 **steps**） `POST /v1/images/generations`（`b64_json`，steps 1..200） **`POST /v1/images/edits`（`image[]` 1–5 张原生多图）** `POST /unload`（推理中 → 409） |
+| Image GPU 等待队列 | VRAM 预算 admission（free ≥ 实测标定 budget + `IMAGE_GPU_SAFETY_MARGIN_MIB=3072`，不看 Ollama 是否为空）→ 不满足进 WAITING_FOR_GPU（不持 gpu.lock，3s 重试，`IMAGE_GPU_WAIT_TIMEOUT_SECONDS=900` 超时 → 503 `GPU_WAIT_TIMEOUT`）；Zrald 持锁同路径等待 |
+| Image steps 档位 | quality：fast/low=4、standard/medium/auto=24、high/xhigh=40、**max(超高质量)=120**；`/status.capability.steps` = official40 / recommended_high120 / max_custom200（与前端 `modelProfile.ts` 同步） |
 | Image capability | `services/image/capability.py` 单一配置源：512–2752 边 / ≤4,300,800px / 宽高比≤1.8 / 16倍数 / 5 参考图 / quality fast4·standard24·high40 / 官方8档预设；前端 `modelProfile.ts` 镜像并从 `/status.capability` 运行时覆盖 |
 | Image quality→steps | 统一 helper：显式 `num_inference_steps` > `quality` > 24 默认；fast/low=4，standard/medium/auto=24，high/xhigh/max=40；响应含 `effective_steps` 与 `queue_wait/load/inference/total_seconds`（`generation_seconds` 兼容=inference） |
 | Image inference guard | `model_manager._inference_lock`：generate/edit 全程持有；推理中 `/unload` → 409，idle watcher 跳过本轮，gpu.lock 不提前释放 |

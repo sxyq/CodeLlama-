@@ -1,10 +1,15 @@
-"""Qwen-Image-2.1 lifecycle: lazy load + GPU lock + idle unload.
+"""Qwen-Image-2.1 lifecycle: lazy load + GPU lock + idle unload + GPU wait.
 
 Design rules (staging rules):
 - Import of this module MUST NOT load the model or touch the GPU.
 - torch / diffusers are imported lazily inside load().
-- Before loading: check Ollama /api/ps; if a large model occupies GPU
-  return 503 GPU_BUSY (never kill Ollama runners).
+- GPU admission is VRAM-budget based (free VRAM vs request budget + safety
+  margin), NOT "ollama must be empty": a resident embedding model is fine
+  while the budget still fits. The cross-service gpu.lock (Image <-> Zrald)
+  is a separate condition inside the same wait loop.
+- Requests failing admission wait in WAITING_FOR_GPU (no gpu.lock held),
+  retrying every GPU_WAIT_POLL_SECONDS until IMAGE_GPU_WAIT_TIMEOUT_SECONDS
+  -> GpuWaitTimeout (503 GPU_WAIT_TIMEOUT). Normal queuing never busy-fails.
 - Cross-service GPU lease: state/gpu.lock via OS-level flock (atomic, no create-then-check race).
 - Idle > IDLE_TIMEOUT seconds -> automatic unload (never while inference is running).
 """
@@ -12,27 +17,55 @@ from __future__ import annotations
 
 import fcntl
 import gc
-import json
 import math
 import os
+import subprocess
 import threading
 import time
-import urllib.request
 from pathlib import Path
 
 MODEL_PATH = "/data/vllm/ImageModel/Qwen-Image-2.1"
 GPU_LOCK_PATH = Path("/home/syy/ai-serving/state/gpu.lock")
-OLLAMA_PS_URL = "http://127.0.0.1:11434/api/ps"
 IDLE_TIMEOUT = int(os.environ.get("IMAGE_IDLE_TIMEOUT", "600"))  # seconds, default 600
-OLLAMA_VRAM_BUSY_BYTES = 1_000_000_000  # size_vram above this = GPU busy
+GPU_WAIT_TIMEOUT = int(os.environ.get("IMAGE_GPU_WAIT_TIMEOUT_SECONDS", "900"))
+GPU_WAIT_POLL_SECONDS = float(os.environ.get("IMAGE_GPU_WAIT_POLL_SECONDS", "3"))
+GPU_SAFETY_MARGIN_MIB = int(os.environ.get("IMAGE_GPU_SAFETY_MARGIN_MIB", "3072"))
 # Qwen-Image-2.1 samples guidance-free by default (true_cfg_scale=1); a
 # non-empty negative prompt only takes effect with CFG enabled. 4.0 matches
 # the Qwen-Image family's guidance convention.
 TRUE_CFG_SCALE = 4.0
 
 
+def estimate_gpu_budget_mib(width: int, height: int, ref_count: int = 0,
+                            n: int = 1) -> int:
+    """Expected peak VRAM of one request in MiB (calibrated on this A6000):
+
+    t2i   1MP=17316, t2i 4.19MP=33700, t2i 1MP n=4=30926
+    edit  1MP refs 1/2/3/4/5 = 20578/21712/24284/28614/31414
+    edit  5ref 4.19MP=41372
+    """
+    mp = (width * height) / 1_000_000.0
+    if ref_count <= 0:
+        base = 12180 + 5136 * mp
+        if n > 1:
+            base += (n - 1) * 4500
+        return int(base)
+    base = 17316 + ref_count * 2900  # 1MP edit curve
+    base += max(0.0, mp - 1.0) * 3400  # marginal beyond 1MP for edits
+    return int(base)
+
+
 class GpuBusy(Exception):
-    """Raised when Ollama or another holder occupies the GPU."""
+    """Raised when admission fails right now (VRAM budget or gpu.lock)."""
+
+
+class GpuWaitTimeout(Exception):
+    """Raised when admission never succeeds within IMAGE_GPU_WAIT_TIMEOUT_SECONDS."""
+
+    def __init__(self, waited_s: float, last_reason: str):
+        self.waited_s = waited_s
+        self.last_reason = last_reason
+        super().__init__(f"waited {waited_s:.1f}s for GPU: {last_reason}")
 
 
 class InferenceBusy(Exception):
@@ -52,20 +85,51 @@ class ModelManager:
         self._watcher_started = False
         self.last_load_seconds: float | None = None
         self._lease_fd: int | None = None
+        self.waiting_for_gpu = False  # True while >=1 request is in WAITING_FOR_GPU
 
-    # ---------- GPU occupancy ----------
+    # ---------- GPU admission (VRAM budget, not "ollama empty") ----------
     @staticmethod
-    def _ollama_gpu_busy() -> bool:
+    def _gpu_admission(budget_mib: int) -> None:
+        """Allow iff free VRAM for this process >= budget + safety margin.
+
+        others = every compute process except this pid (ollama runner, zrald
+        llama-server, desktop). Our own residual context is reusable and is
+        not counted against us. Raises GpuBusy with the reason otherwise.
+        """
         try:
-            with urllib.request.urlopen(OLLAMA_PS_URL, timeout=3) as r:
-                data = json.load(r)
-            for m in data.get("models", []):
-                if int(m.get("size_vram", 0)) > OLLAMA_VRAM_BUSY_BYTES:
-                    return True
-        except Exception:
-            # Ollama unreachable: do not block, proceed cautiously
-            return False
-        return False
+            gpu_csv = subprocess.run(
+                ["nvidia-smi", "--query-gpu=memory.total,memory.used",
+                 "--format=csv,noheader,nounits"],
+                capture_output=True, text=True, timeout=5).stdout.strip()
+            apps_out = subprocess.run(
+                ["nvidia-smi", "--query-compute-apps=pid,used_memory",
+                 "--format=csv,noheader,nounits"],
+                capture_output=True, text=True, timeout=5).stdout
+        except Exception as e:
+            raise GpuBusy(f"gpu query failed: {e}")
+        gpu_out = [x.strip() for x in gpu_csv.split(",") if x.strip()]
+        if len(gpu_out) < 2:
+            raise GpuBusy(f"gpu query returned no data: {gpu_csv!r}")
+        total_mib, _used_mib = int(gpu_out[0]), int(gpu_out[1])
+        others = 0
+        me = os.getpid()
+        for line in apps_out.strip().splitlines():
+            parts = [x.strip() for x in line.split(",")]
+            if len(parts) < 2:
+                continue
+            try:
+                pid, mem = int(parts[0]), int(parts[1])
+            except ValueError:
+                continue
+            if pid != me:
+                others += mem
+        free_for_us = total_mib - others
+        need = budget_mib + GPU_SAFETY_MARGIN_MIB
+        if free_for_us < need:
+            raise GpuBusy(
+                f"vram admission failed: free_for_us={free_for_us}MiB "
+                f"< budget={budget_mib}MiB + margin={GPU_SAFETY_MARGIN_MIB}MiB "
+                f"(others={others}MiB)")
 
     def _acquire_gpu_lock(self) -> None:
         """Atomic OS-level lease: flock(LOCK_EX|LOCK_NB) on a STABLE file.
@@ -98,47 +162,26 @@ class ModelManager:
             os.close(fd)
             self._lease_fd = None
 
-    @staticmethod
-    def _nvidia_other_big() -> bool:
-        """True when a big GPU consumer other than this process exists."""
-        import subprocess
-        try:
-            out = subprocess.run(
-                ["nvidia-smi", "--query-compute-apps=pid,used_memory",
-                 "--format=csv,noheader,nounits"],
-                capture_output=True, text=True, timeout=5).stdout
-        except Exception:
-            return False
-        me = os.getpid()
-        for line in out.strip().splitlines():
-            parts = [x.strip() for x in line.split(",")]
-            if len(parts) < 2:
-                continue
-            try:
-                pid, mem = int(parts[0]), int(parts[1])
-            except ValueError:
-                continue
-            if pid != me and mem > 1024:
-                return True
-        return False
-
     # ---------- lifecycle ----------
-    def ensure_loaded(self) -> None:
+    def ensure_loaded(self, budget_mib: int) -> None:
+        """Admission -> gpu.lock -> re-admission -> (lazy) load.
+
+        Raises GpuBusy when VRAM budget or the cross-service lock is not
+        available right now; never holds gpu.lock while merely waiting.
+        """
         with self._lock:
+            self._gpu_admission(budget_mib)
             if self.loaded and self._pipeline is not None:
                 self.last_used = time.time()
                 return
-            if self._ollama_gpu_busy():
-                raise GpuBusy("ollama has a large model in VRAM")
             t_load0 = time.time()
             self._acquire_gpu_lock()
-            # --- post-lease re-checks (close the check-then-load race) ---
-            if self._ollama_gpu_busy():
+            # --- post-lease re-check (close the check-then-load race) ---
+            try:
+                self._gpu_admission(budget_mib)
+            except GpuBusy:
                 self._release_gpu_lock()
-                raise GpuBusy("ollama loaded a large model after lease")
-            if self._nvidia_other_big():
-                self._release_gpu_lock()
-                raise GpuBusy("another big GPU process appeared after lease")
+                raise
             # Lazy heavy imports: module import stays GPU-free
             try:
                 import torch
@@ -161,6 +204,43 @@ class ModelManager:
             print(f"[model_manager] loaded in {self.last_load_seconds:.2f}s", flush=True)
             self._start_watcher()
 
+    def ensure_loaded_waiting(self, budget_mib: int,
+                              timeout_s: int | None = None) -> float:
+        """WAITING_FOR_GPU loop: retry admission until allowed or timeout.
+
+        Returns seconds spent waiting (0 when admitted immediately).
+        Raises GpuWaitTimeout on timeout (queue slot is released by caller).
+        Sets self.waiting_for_gpu while blocked so /status can show it.
+        """
+        timeout_s = GPU_WAIT_TIMEOUT if timeout_s is None else timeout_s
+        t0 = time.time()
+        deadline = t0 + timeout_s
+        entered = False
+        last_reason = "not admitted"
+        while True:
+            try:
+                self.ensure_loaded(budget_mib)
+                waited = time.time() - t0
+                if entered:
+                    self.waiting_for_gpu = False
+                    print(f"[gpu-wait] admitted after {waited:.1f}s "
+                          f"(budget={budget_mib}MiB)", flush=True)
+                return waited
+            except GpuBusy as e:
+                last_reason = str(e)
+                if not entered:
+                    entered = True
+                    self.waiting_for_gpu = True
+                    print(f"[gpu-wait] WAITING_FOR_GPU budget={budget_mib}MiB "
+                          f"timeout={timeout_s}s reason: {last_reason}", flush=True)
+                if time.time() >= deadline:
+                    self.waiting_for_gpu = False
+                    waited = time.time() - t0
+                    print(f"[gpu-wait] TIMEOUT after {waited:.1f}s "
+                          f"reason: {last_reason}", flush=True)
+                    raise GpuWaitTimeout(waited, last_reason)
+                time.sleep(GPU_WAIT_POLL_SECONDS)
+
     @staticmethod
     def _cfg_kwargs(negative_prompt: str | None) -> dict:
         """negative_prompt only works when true_cfg_scale > 1 (pipeline rule)."""
@@ -179,9 +259,10 @@ class ModelManager:
         """
         import io
         import torch
+        width, height = (int(x) for x in size.lower().split("x"))
+        budget = estimate_gpu_budget_mib(width, height, ref_count=0, n=n)
         with self._inference_lock:
-            self.ensure_loaded()
-            width, height = (int(x) for x in size.lower().split("x"))
+            self.ensure_loaded_waiting(budget)
             generator = None
             if seed is not None:
                 generator = torch.Generator(device="cpu").manual_seed(seed)
@@ -227,11 +308,13 @@ class ModelManager:
         """
         import io
         import torch
+        main = image[0] if isinstance(image, list) else image
+        ref_count = len(image) if isinstance(image, list) else 1
+        target_w = width or main.width
+        target_h = height or main.height
+        budget = estimate_gpu_budget_mib(target_w, target_h, ref_count=ref_count, n=1)
         with self._inference_lock:
-            self.ensure_loaded()
-            main = image[0] if isinstance(image, list) else image
-            target_w = width or main.width
-            target_h = height or main.height
+            self.ensure_loaded_waiting(budget)
             pipe_w = math.ceil(target_w / 16) * 16
             pipe_h = math.ceil(target_h / 16) * 16
             kwargs: dict = dict(

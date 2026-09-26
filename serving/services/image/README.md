@@ -14,7 +14,8 @@
 | Lazy load | 首个排队成功的请求才 `DiffusionPipeline.from_pretrained` |
 | BF16 + CPU offload | torch_dtype=bfloat16 + enable_model_cpu_offload() |
 | GPU lock | state/gpu.lock（flock LOCK_EX\|LOCK_NB，文件常驻不 unlink），跨服务互斥 |
-| Ollama 冲突 | 加载前 GET 11434/api/ps，size_vram>1GB → HTTP 503 GPU_BUSY（绝不 kill Ollama runner） |
+| Ollama 冲突 | **VRAM 预算 admission**（free VRAM ≥ 请求预算 + 安全余量，Ollama 常驻但余量足够 → 直接放行），不再按 `/api/ps` 一刀切；预算由 `estimate_gpu_budget_mib()` 按实测标定 |
+| GPU 等待队列 | admission/锁不满足 → **WAITING_FOR_GPU**（不持 gpu.lock，每 `IMAGE_GPU_WAIT_POLL_SECONDS`≈3s 重试）；超过 `IMAGE_GPU_WAIT_TIMEOUT_SECONDS`（默认900s）→ 503 `GPU_WAIT_TIMEOUT`「等待 GPU 超时」；正常排队不再返回 GPU_BUSY |
 | Idle unload | `IMAGE_IDLE_TIMEOUT`（600s）无请求自动卸载；推理进行中跳过本轮（inference guard） |
 | 手工卸载 | POST /unload；推理进行中 → **409 INFERENCE_BUSY**（不释放 gpu.lock） |
 | inference guard | `ModelManager._inference_lock`：generate/edit 全程持有（ensure_loaded + pipeline + 结果编码）；unload/watcher 非阻塞抢锁，抢不到就拒绝 |
@@ -24,7 +25,7 @@
 | CORS | `IMAGE_ALLOWED_ORIGINS` 精确 origin 白名单（代码零真实 IP，无 `*`） |
 | negative_prompt | QwenImage21 仅当 true_cfg_scale>1 才生效 → 提供 negative_prompt 时传 `true_cfg_scale=4.0` |
 | 输出格式 | 管线 PNG；`output_format=jpeg/webp` 时服务端转码（JPEG 白底合成） |
-| quality → steps | 统一 helper `_resolve_steps`：优先级 = 显式 num_inference_steps > quality > 24 默认；fast/low=4，standard/medium/auto=24，high/xhigh/max=40（generations 与 edits 共用；表在 `capability.py`） |
+| quality → steps | 统一 helper `_resolve_steps`：优先级 = 显式 num_inference_steps > quality > 24 默认；fast/low=4，standard/medium/auto=24，high/xhigh=40，**max(超高质量)=120**（实测档，generations 与 edits 共用；表在 `capability.py`；`/status.capability.steps` 暴露 official=40 / recommended_high=120 / max_custom=200） |
 | 参考图 | **1～5 张原生多图**（image=单张 / image=[列表]，保序，图1=主图）；0 张 → 400 INVALID_IMAGE；>5 → 400 `TOO_MANY_REFERENCE_IMAGES`；禁止 contact-sheet 拼接 |
 | 尺寸能力 | 单边 512–**2752**、总像素 ≤ **4,300,800**、宽高比 ≤ **1.8**、16 倍数（`capability.py` 单一配置源）；keep-original 超限自动等比压入包络 |
 | capability | `GET /status` 新增 `capability`（limits/quality_steps/resolutions/features）——前端 Model Profile 与其对齐 |
@@ -32,7 +33,7 @@
 ## API
 
 - GET  /health
-- GET  /status → 含 `queue:{running,pending,max_pending}`（旧字段保留）
+- GET  /status → 含 `queue:{running,pending,waiting_for_gpu,max_pending}`（旧字段保留）
 - POST /v1/images/generations → `data[].b64`（旧）+ `data[].b64_json`（上游）
 - POST /v1/images/edits（multipart）→ `data[].b64_json/path/width/height`
 - POST /unload
@@ -88,7 +89,9 @@ curl -X POST http://SERVER_IP:8011/v1/images/edits \
 
 错误码：缺字段/空 prompt/非图片/超限/尺寸越界 → 400（INVALID_REQUEST/INVALID_IMAGE/INVALID_SIZE/INVALID_FORMAT/
 MASK_UNSUPPORTED/TOO_MANY_REFERENCE_IMAGES）；队列满 → 429 QUEUE_FULL；排队超时 → 503 QUEUE_TIMEOUT；
-GPU 租约冲突 → 503 GPU_BUSY；推理中 unload → 409 INFERENCE_BUSY；管线失败 → 500。
+GPU 等待超时 → 503 GPU_WAIT_TIMEOUT（「等待 GPU 超时」）；推理中 unload → 409 INFERENCE_BUSY；
+GPU 租约/预算瞬时冲突 → 503 GPU_BUSY（内部等待循环消化，正常路径不再外抛）；
+管线失败 → 500。
 错误响应统一 `{"error":{"code","message"}}`。
 
 约束（以官方 QwenImage21Pipeline 真实签名为准）：

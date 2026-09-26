@@ -16,6 +16,16 @@ import type { ApiProfile } from '../types'
 import { getImageGenerationModel } from './imageModels'
 import { DEFAULT_SIZE_RULE, type SizeRule } from './size'
 
+/**
+ * 超高质量档步数：由 IMAGE-GPU-WAIT-QUEUE-AND-MAX-STEPS 实测填充。
+ * 当前值 = 40（等于官方推荐档）时质量下拉不显示超高质量档；
+ * 实测得到更高值后改这一处，或由 /status.capability 的 recommended_high_steps 运行时覆盖。
+ */
+export const RECOMMENDED_HIGH_STEPS = 120
+
+/** 自定义步数前端上限，与后端 num_inference_steps（1..200）一致 */
+export const MAX_CUSTOM_STEPS = 200
+
 export interface ResolutionPreset {
   label: string
   width: number
@@ -47,6 +57,10 @@ export interface ModelProfile {
   officialResolutions: ResolutionPreset[]
   /** 质量档对应步数：快速 / 标准 / 高质量 */
   qualitySteps: QualitySteps
+  /** 超高质量档步数；仅当 > 40 时质量下拉展示超高质量档（= RECOMMENDED_HIGH_STEPS） */
+  recommendedHighSteps: number
+  /** 自定义步数输入/滑杆上限（capability.max_custom_steps 可覆盖，前端钳制到 MAX_CUSTOM_STEPS） */
+  maxCustomSteps: number
   /** true = 质量下拉标注步数并提示官方推荐档 */
   annotateQualitySteps: boolean
   /** true = 缩略图标注 主图 / 参考图N 并显示 x / max 计数 */
@@ -64,6 +78,9 @@ export const DEFAULT_MODEL_PROFILE: ModelProfile = {
   strictSizeValidation: false,
   officialResolutions: [],
   qualitySteps: { fast: 4, standard: 24, high: 40 },
+  // 通用模型不开超高质量档；Ultra 只在各模型自己的 Profile 里声明（Qwen 见下）
+  recommendedHighSteps: 40,
+  maxCustomSteps: MAX_CUSTOM_STEPS,
   annotateQualitySteps: false,
   referenceRoleLabels: false,
   supportsMask: false,
@@ -96,6 +113,8 @@ const QWEN_IMAGE_21_PROFILE: ModelProfile = {
     { label: '1536x2752', width: 1536, height: 2752 },
   ],
   qualitySteps: { fast: 4, standard: 24, high: 40 },
+  recommendedHighSteps: RECOMMENDED_HIGH_STEPS,
+  maxCustomSteps: MAX_CUSTOM_STEPS,
   annotateQualitySteps: true,
   referenceRoleLabels: true,
   supportsMask: false,
@@ -140,6 +159,10 @@ export interface ServerCapability {
   max_aspect_ratio?: unknown
   multiple_of?: unknown
   quality_steps?: unknown
+  /** 步数相关预埋字段（后端能力新增，缺失时用静态值） */
+  official_recommended_steps?: unknown
+  recommended_high_steps?: unknown
+  max_custom_steps?: unknown
   resolutions?: unknown
   supports_mask?: unknown
   supports_strength?: unknown
@@ -208,7 +231,14 @@ export function applyServerCapability(capability: unknown): void {
       multiple: readNumber(cap.multiple_of, current.sizeRule.multiple),
     },
     officialResolutions: readResolutions(cap.resolutions, current.officialResolutions),
-    qualitySteps: readQualitySteps(cap.quality_steps, qualitySteps),
+    // quality_steps 缺失时 high 用 official_recommended_steps 预埋字段兜底，再兜底静态值
+    qualitySteps: readQualitySteps(cap.quality_steps, {
+      fast: qualitySteps.fast,
+      standard: qualitySteps.standard,
+      high: readNumber(cap.official_recommended_steps, qualitySteps.high),
+    }),
+    recommendedHighSteps: readNumber(cap.recommended_high_steps, current.recommendedHighSteps),
+    maxCustomSteps: Math.min(MAX_CUSTOM_STEPS, readNumber(cap.max_custom_steps, current.maxCustomSteps)),
     supportsMask: readBool(cap.supports_mask, current.supportsMask),
     supportsStrength: readBool(cap.supports_strength, current.supportsStrength),
     supportsRGBA: readBool(cap.supports_rgba, current.supportsRGBA),

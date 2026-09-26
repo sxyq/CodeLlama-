@@ -39,7 +39,11 @@ export function normalizeParamsForSettings(
     nextParams.output_compression = DEFAULT_PARAMS.output_compression
   }
 
-  if ((nextParams.quality === 'xhigh' || nextParams.quality === 'max') && !isGptImage25Model(getImageGenerationModel(activeProfile))) {
+  // xhigh/max 是 gpt-image-2.5 档位；模型 Profile 开放超高质量档（recommendedHighSteps > 40）时 max 同样保留
+  const isGpt25 = isGptImage25Model(getImageGenerationModel(activeProfile))
+  if (nextParams.quality === 'max') {
+    if (!isGpt25 && modelProfile.recommendedHighSteps <= 40) nextParams.quality = 'high'
+  } else if (nextParams.quality === 'xhigh' && !isGpt25) {
     nextParams.quality = 'high'
   }
 
