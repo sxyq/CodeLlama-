@@ -92,6 +92,14 @@ export default function InputParamsPanel({
   qualityHint: HintTooltipState
   onOpenSizePicker: () => void
 }) {
+  // 与后端 server._resolve_steps 一致：显式 steps > 质量档 > 24
+  const qualityStepMap: Record<string, number> = {
+    fast: 4, low: 4,
+    standard: 24, medium: 24, auto: 24,
+    high: 40, xhigh: 40, max: 40,
+  }
+  const stepsCustom = params.num_inference_steps != null
+  const effectiveSteps = params.num_inference_steps ?? qualityStepMap[params.quality] ?? 24
   return (
     <div className={`grid ${cols} gap-2 text-xs flex-1`}>
       <label
@@ -129,7 +137,13 @@ export default function InputParamsPanel({
       >
         <span className="text-gray-400 dark:text-gray-500 ml-1">质量</span>
         <Select
-          value={activeProfile.codexCli ? 'auto' : isFalProvider && params.quality === 'auto' ? 'high' : params.quality}
+          value={activeProfile.codexCli
+            ? 'auto'
+            : isFalProvider && params.quality === 'auto'
+            ? 'high'
+            : params.quality === 'auto'
+            ? 'medium'
+            : params.quality}
           onChange={(val) => {
             if (!activeProfile.codexCli) setParams({ quality: val as TaskParams['quality'] })
           }}
@@ -317,7 +331,9 @@ export default function InputParamsPanel({
         />
       </label>
       <label className="flex flex-col gap-0.5">
-        <span className="text-gray-400 dark:text-gray-500 ml-1">步数</span>
+        <span className="text-gray-400 dark:text-gray-500 ml-1">
+          步数{stepsCustom ? '（自定义）' : ''}
+        </span>
         <input
           type="number"
           min={1}
@@ -328,9 +344,12 @@ export default function InputParamsPanel({
             const parsed = Number(raw)
             setParams({ num_inference_steps: raw !== '' && Number.isInteger(parsed) && parsed >= 1 && parsed <= 100 ? parsed : null })
           }}
-          placeholder="默认"
+          placeholder={String(effectiveSteps)}
           className="px-3 py-1.5 rounded-xl border border-gray-200/60 dark:border-white/[0.08] bg-white/50 dark:bg-white/[0.03] focus:outline-none text-xs transition-all duration-200 shadow-sm"
         />
+        <span className="text-[10px] text-gray-400 dark:text-gray-500 ml-1">
+          生效步数 = {effectiveSteps}{stepsCustom ? '' : '（按质量档）'}
+        </span>
       </label>
       <label className="flex flex-col gap-0.5">
         <span className="text-gray-400 dark:text-gray-500 ml-1">种子</span>

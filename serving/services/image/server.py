@@ -23,7 +23,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from model_manager import MANAGER, GpuBusy, IDLE_TIMEOUT
+from model_manager import MANAGER, GpuBusy, IDLE_TIMEOUT, InferenceBusy
 from queue_manager import IMAGE_QUEUE, QueueFull, QueueTimeout
 from schemas import (
     EditImage,
@@ -70,6 +70,17 @@ async def _validation_400(request, exc):
     return JSONResponse(status_code=400, content={
         "error": {"code": "INVALID_REQUEST", "message": "missing or invalid request fields"}
     })
+
+
+@app.exception_handler(HTTPException)
+async def _http_error(request, exc):
+    # single error envelope for every coded error: {"error": {"code", "message"}}
+    detail = exc.detail
+    if isinstance(detail, dict) and "code" in detail:
+        body = {"error": detail}
+    else:
+        body = {"error": {"code": f"HTTP_{exc.status_code}", "message": str(detail)}}
+    return JSONResponse(status_code=exc.status_code, content=body, headers=exc.headers)
 
 
 # --- shared validation helpers --------------------------------------------
@@ -139,6 +150,30 @@ def _int_or_none(value) -> int | None:
         raise _bad("INVALID_REQUEST", f"expected an integer, got {value!r}")
 
 
+# --- quality -> inference steps (single helper, shared by both endpoints) --
+QUALITY_STEPS = {
+    "fast": 4,
+    "low": 4,
+    "standard": 24,
+    "medium": 24,
+    "auto": 24,
+    "high": 40,
+    "xhigh": 40,  # upstream GPT-image extra levels, treated as >= high
+    "max": 40,
+}
+DEFAULT_STEPS = 24
+
+
+def _resolve_steps(explicit: int | None, quality: str | None) -> int:
+    """Priority: explicit num_inference_steps > quality preset > 24."""
+    if explicit is not None:
+        return explicit
+    q = (quality or "").strip().lower()
+    if q:
+        return QUALITY_STEPS.get(q, DEFAULT_STEPS)
+    return DEFAULT_STEPS
+
+
 # --- endpoints --------------------------------------------------------------
 @app.get("/health")
 def health() -> dict:
@@ -166,23 +201,28 @@ def status() -> StatusResponse:
 
 @app.post("/v1/images/generations", response_model=GenerationResponse)
 def generations(req: GenerationRequest) -> GenerationResponse:
+    t_start = time.time()
     width, height = _parse_size(req.size, (1024, 1024))
     fmt = _check_format(req.output_format)
     negative = req.negative_prompt.strip() if req.negative_prompt and req.negative_prompt.strip() else None
+    steps = _resolve_steps(req.num_inference_steps, req.quality)
+    print(f"[gen] steps={steps} explicit={req.num_inference_steps} "
+          f"quality={req.quality} size={width}x{height} n={req.n}", flush=True)
 
-    t_start = time.time()
     was_loaded = MANAGER.loaded
+    t_queue = time.time()
     try:
         IMAGE_QUEUE.acquire()
     except QueueFull as e:
         raise _bad("QUEUE_FULL", str(e), status=429)
     except QueueTimeout as e:
         raise _bad("QUEUE_TIMEOUT", str(e), status=503)
+    queue_wait = time.time() - t_queue
     try:
         try:
-            blobs = MANAGER.generate(
+            blobs, infer_s = MANAGER.generate(
                 prompt=req.prompt, n=req.n, size=f"{width}x{height}",
-                negative_prompt=negative, seed=req.seed, steps=req.num_inference_steps,
+                negative_prompt=negative, seed=req.seed, steps=steps,
             )
         except GpuBusy as e:
             raise _bad("GPU_BUSY", str(e), status=503)
@@ -193,9 +233,7 @@ def generations(req: GenerationRequest) -> GenerationResponse:
     finally:
         IMAGE_QUEUE.release()
 
-    total_s = time.time() - t_start
     load_s = MANAGER.last_load_seconds if not was_loaded else None
-    gen_s = max(total_s - (load_s or 0.0), 0.0)
     stamp = int(time.time())
     data = []
     for i, blob in enumerate(blobs):
@@ -207,15 +245,22 @@ def generations(req: GenerationRequest) -> GenerationResponse:
             path=str(path),
             seed=req.seed,
         ))
+    total_s = time.time() - t_start
     return GenerationResponse(
         created=stamp, data=data,
         load_seconds=round(load_s, 3) if load_s else None,
-        generation_seconds=round(gen_s, 3),
+        # legacy field kept equal to inference_seconds
+        generation_seconds=round(infer_s, 3),
+        queue_wait_seconds=round(queue_wait, 3),
+        inference_seconds=round(infer_s, 3),
+        total_seconds=round(total_s, 3),
+        effective_steps=steps,
     )
 
 
 @app.post("/v1/images/edits", response_model=EditResponse)
 async def edits(request: Request) -> EditResponse:
+    t_start = time.time()
     form = await request.form()
 
     prompt = str(form.get("prompt") or "").strip()
@@ -263,31 +308,37 @@ async def edits(request: Request) -> EditResponse:
 
     fmt = _check_format(str(form.get("output_format") or "png"))
     negative = str(form.get("negative_prompt") or "").strip() or None
-    steps = _int_or_none(form.get("num_inference_steps"))
-    if steps is not None and not (1 <= steps <= 200):
+    explicit_steps = _int_or_none(form.get("num_inference_steps"))
+    if explicit_steps is not None and not (1 <= explicit_steps <= 200):
         raise _bad("INVALID_REQUEST", "num_inference_steps must be within 1-200")
+    quality = str(form.get("quality") or "").strip() or None
+    steps = _resolve_steps(explicit_steps, quality)
+    print(f"[edit] steps={steps} explicit={explicit_steps} "
+          f"quality={quality} target={width}x{height}", flush=True)
     seed = _int_or_none(form.get("seed"))
 
     was_loaded = MANAGER.loaded
 
     def _job():
+        t_queue = time.time()
         try:
             IMAGE_QUEUE.acquire()
         except QueueFull as e:
             raise _bad("QUEUE_FULL", str(e), status=429)
         except QueueTimeout as e:
             raise _bad("QUEUE_TIMEOUT", str(e), status=503)
+        queue_wait = time.time() - t_queue
         try:
-            return MANAGER.edit(
+            outs, infer_s = MANAGER.edit(
                 image=pil, prompt=prompt, negative_prompt=negative,
                 steps=steps, seed=seed, width=width, height=height,
             )
         finally:
             IMAGE_QUEUE.release()
+        return outs, infer_s, queue_wait
 
-    t_start = time.time()
     try:
-        outs, infer_s = await run_in_threadpool(_job)
+        outs, infer_s, queue_wait = await run_in_threadpool(_job)
     except GpuBusy as e:
         raise _bad("GPU_BUSY", str(e), status=503)
     except HTTPException:
@@ -305,14 +356,22 @@ async def edits(request: Request) -> EditResponse:
             b64_json=base64.b64encode(blob).decode(),
             path=str(path), width=out_w, height=out_h,
         ))
+    total_s = time.time() - t_start
     return EditResponse(
         created=stamp, data=data,
         load_seconds=round(load_s, 3),
         inference_seconds=round(infer_s, 3),
+        queue_wait_seconds=round(queue_wait, 3),
+        total_seconds=round(total_s, 3),
+        effective_steps=steps,
     )
 
 
 @app.post("/unload")
 def unload() -> dict:
-    changed = MANAGER.unload()
+    try:
+        changed = MANAGER.unload()
+    except InferenceBusy as e:
+        # never block for minutes and never release the gpu lease mid-run
+        raise _bad("INFERENCE_BUSY", str(e), status=409)
     return {"unloaded": changed, "model_loaded": MANAGER.loaded}

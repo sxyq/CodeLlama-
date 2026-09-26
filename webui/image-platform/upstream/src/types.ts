@@ -153,7 +153,8 @@ export interface TaskParams {
 
 export const DEFAULT_PARAMS: TaskParams = {
   size: 'auto',
-  quality: 'auto',
+  // 标准档（对应 24 steps）；快速=low(4) / 高质量=high(40)
+  quality: 'medium',
   output_format: 'png',
   output_compression: null,
   moderation: 'auto',

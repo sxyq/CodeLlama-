@@ -12,6 +12,8 @@ class GenerationRequest(BaseModel):
     size: str = Field(default="1024x1024")  # WxH, "auto", validated in endpoint
     seed: int | None = None
     num_inference_steps: int | None = Field(default=None, ge=1, le=200)
+    # quality preset: fast/low=4, standard/medium=24, high=40 (see server._resolve_steps)
+    quality: str | None = None
     output_format: str = "png"
 
 
@@ -27,7 +29,12 @@ class GenerationResponse(BaseModel):
     model: str = "Qwen-Image-2.1"
     data: list[GenerationImage]
     load_seconds: float | None = None
+    # legacy alias, equal to inference_seconds (kept for old clients)
     generation_seconds: float | None = None
+    queue_wait_seconds: float | None = None
+    inference_seconds: float | None = None
+    total_seconds: float | None = None
+    effective_steps: int | None = None
 
 
 class QueueStats(BaseModel):
@@ -62,3 +69,6 @@ class EditResponse(BaseModel):
     data: list[EditImage]
     load_seconds: float | None = None
     inference_seconds: float | None = None
+    queue_wait_seconds: float | None = None
+    total_seconds: float | None = None
+    effective_steps: int | None = None

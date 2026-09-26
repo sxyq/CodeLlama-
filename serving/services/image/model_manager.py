@@ -35,16 +35,23 @@ class GpuBusy(Exception):
     """Raised when Ollama or another holder occupies the GPU."""
 
 
+class InferenceBusy(Exception):
+    """Raised when unload is refused because an inference is running."""
+
+
 class ModelManager:
     def __init__(self) -> None:
         self._lock = threading.Lock()
+        # Held across ensure_loaded + pipeline call + result encoding.
+        # unload()/idle watcher try it non-blocking: busy -> refuse, never
+        # tear down the pipeline, empty_cache, or release gpu.lock mid-run.
+        self._inference_lock = threading.Lock()
         self._pipeline = None
         self.loaded = False
         self.last_used: float = 0.0
         self._watcher_started = False
         self.last_load_seconds: float | None = None
         self._lease_fd: int | None = None
-        self._inference_depth = 0  # >0 while a pipeline call is running
 
     # ---------- GPU occupancy ----------
     @staticmethod
@@ -164,36 +171,40 @@ class ModelManager:
     def generate(self, prompt: str, n: int, size: str,
                  negative_prompt: str | None = None,
                  seed: int | None = None,
-                 steps: int | None = None) -> list[bytes]:
-        import torch
-        self.ensure_loaded()
-        width, height = (int(x) for x in size.lower().split("x"))
-        generator = None
-        if seed is not None:
-            generator = torch.Generator(device="cpu").manual_seed(seed)
-        kwargs: dict = dict(
-            prompt=prompt,
-            width=width, height=height, num_images_per_prompt=n,
-            **self._cfg_kwargs(negative_prompt),
-        )
-        if steps:
-            kwargs["num_inference_steps"] = steps
-        if generator is not None:
-            kwargs["generator"] = generator
-        self._inference_depth += 1
-        try:
-            result = self._pipeline(**kwargs)
-            self.last_used = time.time()
-        finally:
-            self._inference_depth -= 1
+                 steps: int | None = None) -> tuple[list[bytes], float]:
+        """Returns (png_bytes, inference_seconds).
+
+        The inference guard covers ensure_loaded -> pipeline call -> PNG
+        encoding, so unload can never interleave with a running generation.
+        """
         import io
-        import PIL.Image  # noqa: F401  (pipeline returns PIL images)
-        out: list[bytes] = []
-        for img in result.images:
-            buf = io.BytesIO()
-            img.save(buf, format="PNG")
-            out.append(buf.getvalue())
-        return out
+        import torch
+        with self._inference_lock:
+            self.ensure_loaded()
+            width, height = (int(x) for x in size.lower().split("x"))
+            generator = None
+            if seed is not None:
+                generator = torch.Generator(device="cpu").manual_seed(seed)
+            kwargs: dict = dict(
+                prompt=prompt,
+                width=width, height=height, num_images_per_prompt=n,
+                **self._cfg_kwargs(negative_prompt),
+            )
+            if steps:
+                kwargs["num_inference_steps"] = steps
+            if generator is not None:
+                kwargs["generator"] = generator
+            t0 = time.time()
+            result = self._pipeline(**kwargs)
+            elapsed = time.time() - t0
+            self.last_used = time.time()
+            import PIL.Image  # noqa: F401  (pipeline returns PIL images)
+            out: list[bytes] = []
+            for img in result.images:
+                buf = io.BytesIO()
+                img.save(buf, format="PNG")
+                out.append(buf.getvalue())
+            return out, elapsed
 
     def edit(self, image, prompt: str, negative_prompt: str | None = None,
              steps: int | None = None, seed: int | None = None,
@@ -205,57 +216,68 @@ class ModelManager:
 
         Output size is kept exactly at (width, height): the pipeline floors
         dims to a multiple of 16, so we ceil up for it and crop back.
+
+        The inference guard covers ensure_loaded -> pipeline call -> crop +
+        PNG encoding, mirroring generate().
         """
         import io
         import torch
-        self.ensure_loaded()
-        target_w = width or image.width
-        target_h = height or image.height
-        pipe_w = math.ceil(target_w / 16) * 16
-        pipe_h = math.ceil(target_h / 16) * 16
-        kwargs: dict = dict(
-            prompt=prompt, image=image,
-            width=pipe_w, height=pipe_h,
-            **self._cfg_kwargs(negative_prompt),
-        )
-        if steps:
-            kwargs["num_inference_steps"] = steps
-        if seed is not None:
-            kwargs["generator"] = torch.Generator(device="cpu").manual_seed(seed)
-        t0 = time.time()
-        self._inference_depth += 1
-        try:
+        with self._inference_lock:
+            self.ensure_loaded()
+            target_w = width or image.width
+            target_h = height or image.height
+            pipe_w = math.ceil(target_w / 16) * 16
+            pipe_h = math.ceil(target_h / 16) * 16
+            kwargs: dict = dict(
+                prompt=prompt, image=image,
+                width=pipe_w, height=pipe_h,
+                **self._cfg_kwargs(negative_prompt),
+            )
+            if steps:
+                kwargs["num_inference_steps"] = steps
+            if seed is not None:
+                kwargs["generator"] = torch.Generator(device="cpu").manual_seed(seed)
+            t0 = time.time()
             result = self._pipeline(**kwargs)
+            elapsed = time.time() - t0
             self.last_used = time.time()
-        finally:
-            self._inference_depth -= 1
-        elapsed = time.time() - t0
-        out = []
-        for img in result.images:
-            if img.size != (target_w, target_h):
-                img = img.crop((0, 0, target_w, target_h))
-            buf = io.BytesIO()
-            img.save(buf, format="PNG")
-            out.append((buf.getvalue(), img.width, img.height))
-        return out, elapsed
+            out = []
+            for img in result.images:
+                if img.size != (target_w, target_h):
+                    img = img.crop((0, 0, target_w, target_h))
+                buf = io.BytesIO()
+                img.save(buf, format="PNG")
+                out.append((buf.getvalue(), img.width, img.height))
+            return out, elapsed
 
     def unload(self) -> bool:
-        with self._lock:
-            if self._pipeline is None:
+        """Tear down the pipeline + release gpu.lock.
+
+        Raises InferenceBusy (without touching the pipeline or the lease)
+        when an inference holds the guard. The lock is taken non-blocking so
+        callers never stall behind a long generation.
+        """
+        if not self._inference_lock.acquire(blocking=False):
+            raise InferenceBusy("image inference is currently running")
+        try:
+            with self._lock:
+                if self._pipeline is None:
+                    self.loaded = False
+                    self._release_gpu_lock()
+                    return False
+                self._pipeline = None
                 self.loaded = False
+                gc.collect()
+                try:
+                    import torch
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                except Exception:
+                    pass
                 self._release_gpu_lock()
-                return False
-            self._pipeline = None
-            self.loaded = False
-            gc.collect()
-            try:
-                import torch
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-            except Exception:
-                pass
-            self._release_gpu_lock()
-            return True
+                return True
+        finally:
+            self._inference_lock.release()
 
     # ---------- idle watcher ----------
     def _start_watcher(self) -> None:
@@ -266,12 +288,14 @@ class ModelManager:
         def _loop() -> None:
             while True:
                 time.sleep(15)
-                # never unload mid-inference (long runs can exceed IDLE_TIMEOUT)
-                if self._inference_depth > 0:
-                    continue
-                if (self.loaded and self.last_used
+                if not (self.loaded and self.last_used
                         and time.time() - self.last_used > IDLE_TIMEOUT):
+                    continue
+                try:
                     self.unload()
+                except InferenceBusy:
+                    # inference running: skip this round, the next tick retries
+                    continue
 
         t = threading.Thread(target=_loop, daemon=True, name="idle-unload")
         t.start()

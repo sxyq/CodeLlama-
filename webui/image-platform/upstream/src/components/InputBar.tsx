@@ -482,18 +482,20 @@ export default function InputBar() {
     ? DEFAULT_FAL_IMAGE_SIZE
     : (activeProfile.codexCli ? normalizeCodexCliImageSize(params.size) : normalizeImageSize(params.size)) || DEFAULT_PARAMS.size
 
-  const qualityOptions = [
-    ...(!isFalProvider ? [{ label: 'auto', value: 'auto' }] : []),
-    { label: 'low', value: 'low' },
-    { label: 'medium', value: 'medium' },
-    { label: 'high', value: 'high' },
-    ...(isGptImage25Model(getImageGenerationModel(activeProfile))
-      ? [
-          { label: 'xhigh', value: 'xhigh' },
-          { label: 'max', value: 'max' },
-        ]
-      : []),
-  ]
+  // 质量三档与后端 _resolve_steps 对应：快速=4 / 标准=24 / 高质量=40
+  const qualityOptions = activeProfile.codexCli
+    ? [{ label: 'auto', value: 'auto' }]
+    : [
+        { label: '快速', value: 'low' },
+        { label: '标准', value: 'medium' },
+        { label: '高质量', value: 'high' },
+        ...(isGptImage25Model(getImageGenerationModel(activeProfile))
+          ? [
+              { label: 'xhigh', value: 'xhigh' },
+              { label: 'max', value: 'max' },
+            ]
+          : []),
+      ]
   const atImageLimit = inputImages.length >= API_MAX_IMAGES
   const uploadImageTooltipText = atImageLimit ? `参考图数量已达上限（${API_MAX_IMAGES} 张），无法继续添加` : '上传图片'
   const transparentOutputHint = useHintTooltip()

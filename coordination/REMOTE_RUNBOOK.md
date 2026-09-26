@@ -55,7 +55,9 @@ bash $HOME/codellama-lora/scripts/run_training.sh
 |---|---|
 | 统一 Serving 目录 | `$HOME/ai-serving/`（configs / services / scripts / state / logs / env / webui / tmp） |
 | Image 服务 | port **8011**（FastAPI，lazy load，idle 600s；启动：`bash $HOME/ai-serving/scripts/image/start_image_service.sh`，内部 source `configs/image/service.local.env` 后 uvicorn） |
-| Image API 端点 | `GET /health` `GET /status`（含 queue.running/pending/max_pending） `POST /v1/images/generations`（含 `b64_json`） **`POST /v1/images/edits`（multipart，字段 `image` 或 `image[]`，`size=auto` 保持原尺寸，无 mask）** `POST /unload` |
+| Image API 端点 | `GET /health` `GET /status`（含 queue.running/pending/max_pending） `POST /v1/images/generations`（含 `b64_json`） **`POST /v1/images/edits`（multipart，字段 `image` 或 `image[]`，`size=auto` 保持原尺寸，无 mask）** `POST /unload`（推理中 → 409 INFERENCE_BUSY） |
+| Image quality→steps | 统一 helper：显式 `num_inference_steps` > `quality` > 24 默认；fast/low=4，standard/medium/auto=24，high/xhigh/max=40；响应含 `effective_steps` 与 `queue_wait/load/inference/total_seconds`（`generation_seconds` 兼容=inference） |
+| Image inference guard | `model_manager._inference_lock`：generate/edit 全程持有；推理中 `/unload` → 409，idle watcher 跳过本轮，gpu.lock 不提前释放 |
 | Image 统一队列 | `services/image/queue_manager.py`：max_concurrent=1 / max_pending=8 / timeout=480s；超限 429 `QUEUE_FULL`；与 gpu.lock 顺序：queue → flock → 推理 |
 | Image 临时输出 | `$HOME/ai-serving/tmp/image-output/`（TTL 1800s，300s 扫描，启动即扫；env：`IMAGE_OUTPUT_RETENTION_SECONDS` / `IMAGE_CLEANUP_INTERVAL_SECONDS`） |
 | Image CORS | env `IMAGE_ALLOWED_ORIGINS`（逗号分隔精确 origin，**代码内无真实 IP**；真实值仅在 `service.local.env`，永不入 Git） |

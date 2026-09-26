@@ -1,4 +1,4 @@
-# Qwen-Image-2.1 Service（RUNNING：queue + CORS + TTL）
+# Qwen-Image-2.1 Service（RUNNING：queue + CORS + TTL + quality 映射 + inference guard）
 
 - model: /data/vllm/ImageModel/Qwen-Image-2.1（local_files_only）
 - port: 8011
@@ -15,14 +15,16 @@
 | BF16 + CPU offload | torch_dtype=bfloat16 + enable_model_cpu_offload() |
 | GPU lock | state/gpu.lock（flock LOCK_EX\|LOCK_NB，文件常驻不 unlink），跨服务互斥 |
 | Ollama 冲突 | 加载前 GET 11434/api/ps，size_vram>1GB → HTTP 503 GPU_BUSY（绝不 kill Ollama runner） |
-| Idle unload | `IMAGE_IDLE_TIMEOUT`（600s）无请求自动卸载；推理进行中不卸载（_inference_depth 防护） |
-| 手工卸载 | POST /unload |
+| Idle unload | `IMAGE_IDLE_TIMEOUT`（600s）无请求自动卸载；推理进行中跳过本轮（inference guard） |
+| 手工卸载 | POST /unload；推理进行中 → **409 INFERENCE_BUSY**（不释放 gpu.lock） |
+| inference guard | `ModelManager._inference_lock`：generate/edit 全程持有（ensure_loaded + pipeline + 结果编码）；unload/watcher 非阻塞抢锁，抢不到就拒绝 |
 | 统一队列 | `queue_manager.py`：generations+edits 共享单槽，max_concurrent=1 / max_pending=8 / timeout=480s |
 | 队列顺序 | request → queue slot → gpu.lock（ensure_loaded 内）→ Ollama/nvidia 复核 → 推理 → 释放 slot |
 | 临时输出 | `temp_output.py` → `$HOME/ai-serving/tmp/image-output/`，TTL `IMAGE_OUTPUT_RETENTION_SECONDS`（1800s），`IMAGE_CLEANUP_INTERVAL_SECONDS`（300s）周期 + 启动即扫；仅删根下常规文件，symlink/越界拒绝 |
 | CORS | `IMAGE_ALLOWED_ORIGINS` 精确 origin 白名单（代码零真实 IP，无 `*`） |
 | negative_prompt | QwenImage21 仅当 true_cfg_scale>1 才生效 → 提供 negative_prompt 时传 `true_cfg_scale=4.0` |
 | 输出格式 | 管线 PNG；`output_format=jpeg/webp` 时服务端转码（JPEG 白底合成） |
+| quality → steps | 统一 helper `_resolve_steps`：优先级 = 显式 num_inference_steps > quality > 24 默认；fast/low=4，standard/medium/auto=24，high/xhigh/max=40（generations 与 edits 共用） |
 
 ## API
 
@@ -32,10 +34,12 @@
 - POST /v1/images/edits（multipart）→ `data[].b64_json/path/width/height`
 - POST /unload
 
-## 本轮状态（IMAGE-WEBUI-QUEUE-TEMP-STORAGE-001）
+## 本轮状态（IMAGE-WEBUI-QUALITY-SAFETY-001）
 
-- RUNNING：queue + CORS + TTL cleaner 已上线；E2E（串行化/TTL/浏览器/回归）全 PASS
-- 详见 `reports/IMAGE_WEBUI_QUEUE_TEMP_STORAGE.md`
+- quality 真实映射（fast/low=4、standard/medium=24、high=40，显式 steps 优先）双端点统一
+- inference guard：推理中 /unload → 409 INFERENCE_BUSY，gpu.lock 不提前释放
+- 计时拆分：queue_wait / load / inference / total（generation_seconds 兼容 = inference）
+- 详见 `reports/IMAGE_WEBUI_QUALITY_SAFETY.md`
 
 ## API Usage（统一 SERVER_IP，禁止写真实 IP）
 
@@ -45,8 +49,9 @@
 curl -X POST http://SERVER_IP:8011/v1/images/generations \
   -H "Content-Type: application/json" \
   -d '{"prompt":"A red apple on a wooden table","n":1,"size":"2048x2048","num_inference_steps":4}'
-# 可选：negative_prompt / seed / output_format(png|jpeg|webp)
+# 可选：negative_prompt / seed / output_format(png|jpeg|webp) / quality(fast|low|standard|medium|high)
 # size="auto" → 1024x1024；512–2048 且 16 倍数，越界 400 INVALID_SIZE
+# steps 规则：显式 num_inference_steps > quality 映射 > 24 默认
 ```
 
 ### 图生图（edits，multipart）
@@ -56,8 +61,8 @@ curl -X POST http://SERVER_IP:8011/v1/images/edits \
   -F "image=@input.png" \        # 亦接受上游字段名 image[]（单张）
   -F "prompt=Change the red apple to a green apple" \
   -F "size=auto" \               # auto/缺省=保持原尺寸；"WxH"=显式尺寸
-  -F "num_inference_steps=4"     # 可选
-  # -F "seed=42" / -F "negative_prompt=..." / -F "output_format=jpeg"
+  -F "num_inference_steps=4"     # 可选（显式优先）
+  # -F "seed=42" / -F "negative_prompt=..." / -F "output_format=jpeg" / -F "quality=high"
   # 旧客户端仍可用：-F "width=..." -F "height=..."（优先于 size）
 ```
 
@@ -66,12 +71,19 @@ curl -X POST http://SERVER_IP:8011/v1/images/edits \
 ```json
 {"created":...,"model":"Qwen-Image-2.1",
  "data":[{"b64_json":"...","path":"...","width":...,"height":...}],
- "load_seconds":...,"inference_seconds":...,"queue":{"running":0,"pending":0,"max_pending":8}}
+ "load_seconds":...,"queue_wait_seconds":...,"inference_seconds":...,
+ "total_seconds":...,"effective_steps":...,
+ "generation_seconds":...}
 ```
+
+计时口径：`queue_wait_seconds` = 排队等待；`load_seconds` = 本次实际 lazy load；
+`inference_seconds` = pipeline 调用；`total_seconds` = 端到端；
+`generation_seconds`（旧字段）= `inference_seconds`（兼容保留）。
 
 错误码：缺字段/空 prompt/非图片/超限/尺寸越界 → 400（INVALID_REQUEST/INVALID_IMAGE/INVALID_SIZE/INVALID_FORMAT/
 MASK_UNSUPPORTED/MULTIPLE_IMAGES）；队列满 → 429 QUEUE_FULL；排队超时 → 503 QUEUE_TIMEOUT；
-GPU 租约冲突 → 503 GPU_BUSY；管线失败 → 500。
+GPU 租约冲突 → 503 GPU_BUSY；推理中 unload → 409 INFERENCE_BUSY；管线失败 → 500。
+错误响应统一 `{"error":{"code","message"}}`。
 
 约束（以官方 QwenImage21Pipeline 真实签名为准）：
 - 支持字段：image(或 image[]) / prompt / negative_prompt / num_inference_steps / seed / size（或 width/height）/ output_format
