@@ -1,10 +1,23 @@
 # Last Agent Handoff
 
 Updated At: 2026-09-27  
-Last Task ID: GPU-SCHEDULER-STRICT-OLLAMA-IMAGE-001  
-Status: COMPLETE — AWAITING COMMANDER REVIEW（Git 结果见最终回复 / git log）
+Last Task ID: IMAGE-WEBUI-TIMEOUT-ALIGN-001  
+Status: COMPLETE — AWAITING COMMANDER REVIEW（Git: abab48a `fix: align image webui request timeout` → push）
 
-## Completed
+## Completed（本轮：前端超时对齐）
+
+- **唯一常量** `IMAGE_REQUEST_TIMEOUT_MS = 1_200_000`（`lib/imageApiShared.ts`）+
+  `imageRequestTimeoutMs()` helper：profile.timeout 无法缩短或超过该值
+- 接入点：`openaiCompatibleImageApi.ts` 三处 abort（生图/图生图/自定义 HTTP 路径）、
+  `store.ts` scheduleOpenAIWatchdog（任务看门狗同源）；`gen-preset-config.py` timeout600→1200
+- 验证：`npm test` **36 文件 / 600 用例全绿**（含新增 `imageTimeout.test.ts`：1199s 不提前终止、
+  1200 上下限、生图/图生图同源）；`npm run build` + `build_webui.sh` 通过，dist 内含 `12e5`；
+  preset-config timeout=1200；对齐关系 frontend1200 ≥ gpu-wait900 = queue1200 的上限一致
+- 仅改前端5文件；Ollama/网关/systemd/Image backend/GPU scheduler/queue/Zrald/quality-steps/参考图 零改动
+
+## Previous Task: GPU-SCHEDULER-STRICT-OLLAMA-IMAGE-001（要点保留）
+
+### Completed
 
 - **Ollama 入口收口（无感迁移）**：unit 改 `OLLAMA_HOST=127.0.0.1:11435`（sudo 密码仅当次 stdin，未落盘）
   → daemon-reload/restart → 网关 `serving/services/ollama/gateway.py` 占 `0.0.0.0:11434`；
@@ -53,7 +66,7 @@ Status: COMPLETE — AWAITING COMMANDER REVIEW（Git 结果见最终回复 / git
 | 3000 OWUI | RUNNING（经 localhost:11434 → 网关，健康200） |
 | 8000 vLLM | CLOSED |
 | GPU | ~15.2GB（embed 水位），gpu.lock FREE |
-| env | IDLE600 / TTL1800/300 / QUEUE_TIMEOUT**1200** / GPU_WAIT900·3s·margin3072 |
+| env | IDLE600 / TTL1800/300 / QUEUE_TIMEOUT**1200** / GPU_WAIT900·3s·margin3072；**前端 Image 请求超时1200s（IMAGE_REQUEST_TIMEOUT_MS）** |
 
 ## 环境要点（下轮必读）
 
