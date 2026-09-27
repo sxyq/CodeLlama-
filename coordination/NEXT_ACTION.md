@@ -1,26 +1,26 @@
 # NEXT_ACTION
 
 Updated At: 2026-09-27  
-Task: GPU-SCHEDULER-STRICT-OLLAMA-IMAGE-001
+Task: OLLAMA-QWEN3-EMBEDDING-06B-VERIFY-DEPLOY-001
 
 Current Phase:
 
-STRICT OLLAMA/IMAGE SCHEDULER COMPLETE — AWAITING COMMANDER REVIEW
+OLLAMA QWEN3-EMBEDDING-0.6B VERIFY COMPLETE — AWAITING COMMANDER REVIEW
 
 Next Action:
 
-1. Git：secret scan → 白名单 add → commit（`feat: serialize ollama and image gpu workloads`）→ push main
-2. （可选）WebUI profile timeout600 → ≥900，消除长等待时前端先断、服务端孤儿完成的错位（报告§13.1）
-3. （可选）等待中请求的 Cancel（需 job id 架构，历轮记录未实现）
-4. （可选）运维手册固化：Ollama 释放一律 API keep_alive=0（`ollama stop` CLI 在本服务器404空转）
-5. （可选）恢复 vLLM（需 Commander 授权）
+1. Git：secret/禁用词/真实IP 扫描 → 白名单 add（reports/coordination）→ commit → push main
+2. （可选）运维手册固化：0.6B embedding 默认即释放，业务无需显式 keep_alive；如需驻留须显式传值
+3. （可选）WebUI/Open WebUI 侧按业务选择 embedding 模型（0.6b 轻量 / 8b 强表征），互不覆盖
+4. （可选）恢复 vLLM（需 Commander 授权）
 
 Flags:
 
 - VLLM_RUNNING = NO
-- OLLAMA_TOPOLOGY = gateway0.0.0.0:11434 → backend127.0.0.1:11435（unit 已改，勿回改）
-- STRICT_EXCLUSION = Image: runner空∧lock∧VRAM+3072；网关: Image占槽扣完成类 + 等待态放行释放
-- QUEUE_TIMEOUT = 1200 ≥ GPU_WAIT_TIMEOUT = 900
+- OLLAMA_TOPOLOGY = gateway 0.0.0.0:11434（pid=3028816）→ backend 127.0.0.1:11435（本轮未动）
+- EMBED_06B = REUSED_EXISTING_MODEL（Q8_0 / ctx32768 / dim1024），未 pull、未重复权重
+- EMBED_8B = PRESERVED（4.7GB 仍在列表）
+- KEEP_ALIVE_DEFAULT = 0（网关注入），runner ≤1s 释放
+- STRICT_EXCLUSION（Image↔Ollama 互斥）= 未改，回归 PASS
 - CUDA_OOM（本轮）= NO
-- WEBUI_8020 = RUNNING（等待状态徽标 + 超高质量（实验性）·120）
-- 禁止：未授权动 Ollama 模型/systemd 回改、vLLM/Zrald/CUDA/网络、为测试反复制造 OOM、真实 IP 入 Git
+- 禁止：未授权改 Gateway/拓扑/Image/Zrald/gpu.lock/queue/CUDA/driver/Open WebUI、删改已有模型、真实 IP 入 Git

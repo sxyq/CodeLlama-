@@ -1,86 +1,97 @@
 # Last Agent Handoff
 
 Updated At: 2026-09-27  
-Last Task ID: IMAGE-WEBUI-TIMEOUT-ALIGN-001  
-Status: COMPLETE — AWAITING COMMANDER REVIEW（Git: abab48a `fix: align image webui request timeout` → push）
+Last Task ID: OLLAMA-QWEN3-EMBEDDING-06B-VERIFY-DEPLOY-001  
+Status: COMPLETE — AWAITING COMMANDER REVIEW
 
-## Completed（本轮：前端超时对齐）
+## Completed（本轮：0.6B embedding 核验复用 + 验证）
 
-- **唯一常量** `IMAGE_REQUEST_TIMEOUT_MS = 1_200_000`（`lib/imageApiShared.ts`）+
-  `imageRequestTimeoutMs()` helper：profile.timeout 无法缩短或超过该值
-- 接入点：`openaiCompatibleImageApi.ts` 三处 abort（生图/图生图/自定义 HTTP 路径）、
-  `store.ts` scheduleOpenAIWatchdog（任务看门狗同源）；`gen-preset-config.py` timeout600→1200
-- 验证：`npm test` **36 文件 / 600 用例全绿**（含新增 `imageTimeout.test.ts`：1199s 不提前终止、
-  1200 上下限、生图/图生图同源）；`npm run build` + `build_webui.sh` 通过，dist 内含 `12e5`；
-  preset-config timeout=1200；对齐关系 frontend1200 ≥ gpu-wait900 = queue1200 的上限一致
-- 仅改前端5文件；Ollama/网关/systemd/Image backend/GPU scheduler/queue/Zrald/quality-steps/参考图 零改动
+- **VERIFY FIRST 结论**：`ollama list` / `GET 127.0.0.1:11435/api/tags` 已存在 `qwen3-embedding:0.6b`
+  （id `ac6da0dfba84`，639 MB，modified 2026-04-17）→ **REUSED_EXISTING_MODEL**，未 pull、未重复下载、
+  未新增权重副本（仍在 `/usr/share/ollama/.ollama`，未复制到 `~/ai-serving/` 或 `/data/vllm/`）
+- **元数据核对**（`/api/show`）：architecture=**qwen3**、capabilities=`[embedding]`、pooling_type=3、
+  context=**32768**、embedding_length=**1024**、parameter_count=**595,776,512**、file_type=7→**Q8_0**、
+  blob `sha256-06507c7b…c3e439`；语义表述=Official Qwen3-Embedding-0.6B architecture/model family,
+  served via Ollama packaging（**未做**权重逐位比对，不作 bit-for-bit 主张）
+- **API 验证（全部经 SERVER_IP:11434 网关，不以 11435 验收）**：
+  - 英 `The quick brown fox…` → 200 / dim **1024** / 有限数值 / 11 token
+  - 中 `人工智能正在改变软件开发方式。` → 200 / dim 1024
+  - 相似度：A `机器学习模型训练`、B `训练人工智能模型`、C `今天天气很好`
+    → cos(A,B)=**0.845444** > cos(A,C)=**0.354812**（B-C=0.372505）PASS
+  - 长文本 8000 字符（1779 token）→ 200 / dim 1024 / 2.06s（ctx 仅核对 metadata，未塞满 32K）
+- **keep_alive 关键验收**：网关日志实证 `KEEP_ALIVE_INJECT POST /api/embed -> 0`（累计 612 条）；
+  请求完成后 `/api/ps` **≤1s** 清空，GPU 回落基线 → 不会长期占 GPU 阻塞 Image
+- **显存**：基线 **682** MiB → 持住读数 **6807** MiB（模型进程 **6120** MiB）→ 释放 **682** MiB
+- **调度回归**：Image idle → embed 200 → runner 自动释放 → Image 1024×1024 **200 / 59.3s**
+  （effective_steps=24，峰值 17602 MiB，完成后 idle、ps 空）；**无需人工清理 Ollama**
+- **8B 保留**：`qwen3-embedding:8b`（4.7 GB）未删/未覆盖/未改名，与 0.6b 并存
+- **零改动**：Gateway、11434/11435 拓扑、Image、Zrald、gpu.lock、queue、CUDA、driver、Open WebUI、
+  Ollama systemd 与模型列表均未修改；业务代码零改动，仅新增报告与协调文件
+- 报告：`reports/OLLAMA_QWEN3_EMBEDDING_06B.md`
 
-## Previous Task: GPU-SCHEDULER-STRICT-OLLAMA-IMAGE-001（要点保留）
+## Previous Task: IMAGE-WEBUI-TIMEOUT-ALIGN-001（要点保留）
 
-### Completed
+- 唯一常量 `IMAGE_REQUEST_TIMEOUT_MS = 1_200_000`（`webui/image-platform/upstream/src/lib/imageApiShared.ts`）
+  经 `imageRequestTimeoutMs()` 接入 `openaiCompatibleImageApi.ts` 三处 abort 与 `store.ts` 看门狗；
+  `gen-preset-config.py` timeout 600→1200；新增 `imageTimeout.test.ts`
+- npm test **36 文件 / 600 用例全绿**；build 通过，dist 含 `12e5`；preset-config timeout=1200
+- commit `abab48a fix: align image webui request timeout`、`8fd916e docs: update handoff after timeout align`
+- 生成/测试均在服务器跑（本机 node_modules rollup 签名损坏）；Node 于 `env/node-v22.23.3-linux-x64/bin`
 
-- **Ollama 入口收口（无感迁移）**：unit 改 `OLLAMA_HOST=127.0.0.1:11435`（sudo 密码仅当次 stdin，未落盘）
-  → daemon-reload/restart → 网关 `serving/services/ollama/gateway.py` 占 `0.0.0.0:11434`；
-  LAN/本机客户端零配置切换。7天端点清单（journal sudo）：GPU 类 embed798/generate81/v1chat20/chat15/
-  v1embed7/v1comp3/rerank1/embeddings1；透传 ps1164/tags68/show46 等。真实 LAN 客户端实测穿网关
-  （被扣56/618/720s 后自动完成，注入 keep_alive=0 生效）。
-- **严格互斥**：Image admission 第一层 `/api/ps` runner 空判定（512MiB 阈，不返回 GPU_BUSY）+
-  VRAM 预算+3072MiB 双确认 + flock；网关在 Image 占槽时扣住完成类 Ollama 请求。
-- **BYPASS_RELEASE 修复**：image 仅资源等待时放行 `keep_alive=0` 释放请求（0.16-0.19s），防互等；
-  推理中仍全扣。本地 harness **7/7 PASS**。
-- **timeout 修复**：`IMAGE_QUEUE_TIMEOUT_SECONDS 480→1200`（≥ GPU wait900）。
-- **E2E**：A=Image等ollama（blocked_by=ollama→4.6s自动→200）、C=chat模型（chat200→90.1s→200，
-  兼 chat 回归）、**B=核心**（5ref+2048²+120 运行中 embed 扣720.1s、ps全空、图200、
-  OOM零新增、完成→embed自动200；真实LAN客户端同窗口被扣56/618/720s）。
-- **keep_alive=0 兼容实测**（先于注入启用）：向量4096、即卸、二次调用正常；显式 keep_alive 保留。
-- **/status.scheduler**：`state/blocked_by(none|ollama|zrald|gpu_memory)/image_running/ollama_running/zrald_running`。
-- **UI**：徽标实时 `等待 Ollama`/`正在生成`（实拍）、`超高质量（实验性）·120`、Ultra 完整说明
-  （本机5参考图实验档/非官方推荐/不保证优于40）；自定义1-200 与提示不变；dist 重建；
-  npm test **35文件/596用例**全绿 + build 通过。
-- **回归全 PASS**：t2i、5ref、2K、Ultra120（E2E B）、custom200→200 / steps201→400、embed、chat、
-  Zrald /manager/status、queue 串行（0/65.4s）、unload 活体409→200、TTL1800/300、IDLE600、端口全绿。
-- 报告：`reports/GPU_SCHEDULER_STRICT_OLLAMA_IMAGE.md`
+## 更早任务要点（GPU-SCHEDULER-STRICT-OLLAMA-IMAGE-001，仍有效）
+
+- **Ollama 入口收口**：unit `OLLAMA_HOST=127.0.0.1:11435`，公网口由 `serving/services/ollama/gateway.py`
+  占 `0.0.0.0:11434`（本轮实测 pid=3028816）；LAN 客户端零配置穿网关
+- **严格互斥**：Image admission = `/api/ps` runner 空（512MiB 阈）∧ gpu.lock ∧ VRAM 预算 +3072MiB；
+  网关在 Image 占槽时扣完成类端点，image 仅资源等待时放行 `keep_alive=0`（BYPASS_RELEASE）
+- 队列：queue timeout **1200** ≥ GPU wait **900**（3s 轮询）；TTL 1800/300、idle 600
+- 前端 Image 请求超时 **1200s**（常量唯一真源，profile timeout 与之对齐）
 
 ## Status Flags
 
 | Flag | Value |
 |---|---|
-| OLLAMA/IMAGE POLICY | STRICT SERIAL（runner空 ∧ lock ∧ VRAM双确认；网关扣完成类） |
-| OLLAMA TOPOLOGY | backend 127.0.0.1:11435 ← gateway 0.0.0.0:11434（PID2931799） |
-| QUEUE/GPU WAIT TIMEOUT | 1200 / 900（≥ 关系成立） |
-| CUDA OOM（本轮） | NO（计数212不变；00:15=旧策略孤儿） |
-| HOL POLICY | 保留占槽等待（报告§7 论证） |
-| CLIENT TIMEOUT GAP | WebUI600 < wait900（限制项，见报告§13.1） |
-| 运维 | `ollama stop` CLI 无效（404空转）→ API `keep_alive:0` |
-| GIT | 见最终回复（`feat: serialize ollama and image gpu workloads` → push） |
+| EMBED_06B | REUSED_EXISTING_MODEL（Q8_0 / 32768 / 1024） |
+| EMBED_8B | PRESERVED |
+| OLLAMA TOPOLOGY | gateway 0.0.0.0:11434 → backend 127.0.0.1:11435（未动） |
+| KEEP_ALIVE DEFAULT | 0（网关注入），runner ≤1s 释放 |
+| IMAGE↔OLLAMA STRICT | 未改，回归 PASS（embed→释放→图 200） |
+| QUEUE/GPU WAIT TIMEOUT | 1200 / 900 |
+| CUDA OOM（本轮） | NO |
+| WEBUI_8020 | RUNNING（超时对齐版） |
+| VLLM | 8000 CLOSED |
+| GIT | 见最终回复（仅 reports + coordination） |
 
 ## 服务终态
 
 | 端口 | 状态 |
 |---|---|
-| 8010 Zrald | RUNNING（未动，manager 正常，lease 空闲） |
-| 8011 Image | RUNNING（严格准入，unloaded/FREE，idle600，queue1/8/480→timeout1200） |
-| 8020 WebUI | RUNNING（dist=等待状态+Ultra实验档版） |
-| 11434 | **网关**（→127.0.0.1:11435）；Ollama 仅回环 |
-| 11435 | Ollama backend（回环，10模型完整） |
-| 3000 OWUI | RUNNING（经 localhost:11434 → 网关，健康200） |
+| 8010 Zrald | RUNNING（未动） |
+| 8011 Image | RUNNING（idle，unloaded，queue1200 / wait900） |
+| 8020 WebUI | RUNNING（超时对齐版） |
+| 11434 | 网关 → 127.0.0.1:11435 |
+| 11435 | Ollama backend（回环，10 模型完整） |
+| 3000 OWUI | RUNNING |
 | 8000 vLLM | CLOSED |
-| GPU | ~15.2GB（embed 水位），gpu.lock FREE |
-| env | IDLE600 / TTL1800/300 / QUEUE_TIMEOUT**1200** / GPU_WAIT900·3s·margin3072；**前端 Image 请求超时1200s（IMAGE_REQUEST_TIMEOUT_MS）** |
+| GPU | ~682 MiB（embed 全释放后），gpu.lock FREE |
 
 ## 环境要点（下轮必读）
 
-- **Ollama 拓扑变了**：外部一律打11434（网关），backend 只在回环11435；查后端直连11435、查入口看
-  `~/ai-serving/logs/ollama/gateway.log`（含对端 IP）。journal 的源IP 现为网关回环。
-- **卸载 Ollama 模型用 API**：`POST /api/embed|chat {"keep_alive":0}`；`ollama stop` CLI 在本服务器
-  会空转到超时（/api/stop 404），不要用它做测试释放。
-- **网关日志关键词**：`HELD`=扣住、`BYPASS_RELEASE`=等待态放行释放、`HOLD_TIMEOUT`、`KEEP_ALIVE_INJECT`。
-- **sudo 模式**：密码仅经当次 ssh heredoc 首行 stdin（`IFS= read -r PW; … sudo -S -v`），永不落盘；
-  heredoc 第一行必须是密码（本轮曾三次漏写首行导致空转，教训固化）。
-- **前端 fetch 超时600s**：浏览器等待类请求超600s 会前端失败而服务端孤儿完成——测长等待要么服务端
-  内定时释放，要么接受孤儿语义。
-- 其余沿用：pkill 括号技巧、IAB filechooser 不可用、本机 rollup 坏、curl --noproxy、Node 于
-  `env/node-v22.23.3-linux-x64/bin`、真实IP永不入Git。
+- **外部一律打 11434（网关）**；查后端直连 11435；网关日志 `~/ai-serving/logs/ollama/gateway.log`
+  （`HELD` / `BYPASS_RELEASE` / `KEEP_ALIVE_INJECT` 关键词，含对端 IP）；journal 源IP 为网关回环
+- **释放 Ollama 模型用 API** `POST /api/embed|chat {"keep_alive":0}`；`ollama stop` CLI 在本服务器
+  `/api/stop` 404 空转，勿用；embed 缺省注入 keep_alive=0（显式值保留，-1=永久驻留）
+- **sudo 模式**：密码仅经当次 ssh heredoc **首行** stdin（`IFS= read -r PW; … sudo -S -v`），永不落盘；
+  `sudo -n` 无免密；heredoc 首行漏写密码会空转
+- **pkill/pgrep 自匹配**：同命令行含模式明文时括号技巧也失效——杀进程/建脚本/pgrep 分三次 SSH，优先 PID 直杀
+- 服务器测试流程：scp → cp 进 `~/ai-serving/webui/image-platform/upstream/…` →
+  `export PATH=$HOME/ai-serving/env/node-v22.23.3-linux-x64/bin:$PATH; cd upstream && npm test`；
+  对外 dist 用 `bash scripts/build_webui.sh`
+- 本机 Mac 代理拦内网：curl 加 `--noproxy '*'`；zsh 变量不自动分词、`====` 触发 = 展开
+- IAB filechooser 报 `ambiguous routed session` → 画廊「编辑输出」等价路径；受控 number input
+  用三击+Backspace 清值
+- 历史教训：`urllib HTTPError` 用 `e.read()` 而非 `e.body`；nvidia-smi CSV 需去逗号再 `int()`
+- 真实 IP 永不入 Git（报告用 `SERVER_IP` / `CLIENT_IP_REDACTED`）
 
 ## Exact Next Action
 
@@ -88,7 +99,7 @@ WAIT FOR COMMANDER REVIEW
 
 ## Do Not
 
-- 未授权不升级/重装 Ollama、不动模型、不删模型；systemd unit 已按本轮授权改绑，勿回改0.0.0.0
-- 不动 vLLM/Zrald/llama.cpp/Open WebUI/CUDA/Clash/网络
-- 网关与 strict admission 是互斥闭环，勿单独关闭一侧
-- 测试图/tmp/logs/模型/node_modules/dist本地配置/真实IP不入Git；禁 git add -A
+- 未授权不动 Gateway/11434·11435 拓扑/Image/Zrald/gpu.lock/queue/CUDA/driver/Open WebUI/systemd
+- 不删、不覆盖、不改名任何已有模型（含 0.6b 与 8b）
+- 不为测试反复制造 CUDA OOM；不恢复 vLLM（需授权）
+- 模型权重/blobs/logs/tmp/真实IP/secret 不入 Git；禁 git add -A

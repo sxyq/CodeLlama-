@@ -1,27 +1,25 @@
 # PROJECT_STATE
 
 更新时间：2026-09-27  
-Task: GPU-SCHEDULER-STRICT-OLLAMA-IMAGE-001
+Task: OLLAMA-QWEN3-EMBEDDING-06B-VERIFY-DEPLOY-001
 
 | 项 | 值 |
 |---|---|
 | Experiment ID | DEFAULT-LORA-001 |
-| 当前阶段 | STRICT OLLAMA/IMAGE SCHEDULER COMPLETE（待 Commander 审阅） |
+| 当前阶段 | OLLAMA QWEN3-EMBEDDING-0.6B VERIFY COMPLETE（待 Commander 审阅） |
 | VLLM_RUNNING | NO（8000 CLOSED） |
-| ZRALD :8010 | RUNNING（flock 互斥未动，spawn_count=3） |
-| OLLAMA | backend 改绑 **127.0.0.1:11435**（systemd unit 已改，PID2931799，10 模型完整）；**公网口由网关接管** |
-| OLLAMA GATEWAY | `0.0.0.0:11434 → 127.0.0.1:11435`（serving/services/ollama/gateway.py，nohup）：完成类端点等 Image 槽、embed 缺省 keep_alive=0 注入、等待态放行释放请求（BYPASS_RELEASE） |
-| IMAGE :8011 | 严格准入 = runner空 ∧ gpu.lock ∧ VRAM预算+3072MiB；WAITING_FOR_GPU 3s轮询/900s超时；queue timeout **1200**；/status 增 scheduler 块 |
-| WEBUI :8020 | 徽标实时状态（等待 Ollama/正在生成等）、超高质量（实验性）·120、§19 Ultra 说明；dist 已重建；596 用例全绿 |
-| E2E_A（image等ollama） | PASS（blocked_by=ollama → 释放后同请求4.6s admission →200） |
-| E2E_C（chat模型） | PASS（chat200"OK"→等待90.1s→自动200；兼作 chat 回归） |
-| E2E_B（核心） | PASS（5ref+2048²+120 运行中：模拟embed扣720.1s、ps全程空、图200、OOM零新增、完成后embed自动200；真实LAN客户端被扣56/618/720s） |
-| KEEP_ALIVE=0 兼容 | PASS（4096维向量、即卸、二调正常；显式值保留实测） |
-| Bypass修复 | 等待态释放请求0.16-0.19s放行；本地 harness 7/7 |
-| TIMEOUT修复 | queue 480→1200 ≥ gpu wait 900 |
-| OOM | 本轮0次（计数稳定212；00:15 事件=旧策略孤儿进程） |
-| 回归 | t2i/5ref/2K/Ultra120/custom200(200→201→400)/embed/chat/Zrald/queue/unload409→200/TTL/端口 全 PASS |
-| 运维规约 | `ollama stop` CLI 无效（/api/stop 404 空转）→ 一律 API `keep_alive:0` |
-| 已知限制 | WebUI profile timeout600 < gpu wait900（长等待前端先断、服务端孤儿完成）；见报告§13 |
+| ZRALD :8010 | RUNNING（flock 互斥未动） |
+| OLLAMA | backend **127.0.0.1:11435**（回环，unit 未动）；公网口网关 **0.0.0.0:11434**（pid=3028816，逻辑未动）；**10 模型完整，本轮零增删** |
+| OLLAMA 模型（Embedding） | `qwen3-embedding:0.6b`（**REUSED_EXISTING_MODEL**：qwen3 / 595.78M / **Q8_0** / ctx **32768** / dim **1024** / capabilities=embedding）、`qwen3-embedding:8b`（PRESERVED）、`nomic-embed-text` |
+| OLLAMA 模型（Chat/Gen） | qwen2.5-coder:7b-instruct、qwen2.5-coder:14b-instruct、qwen3:8b、qwen3-coder:30b、codellama:13b-instruct、deepseek-r1:7b |
+| OLLAMA 模型（Reranker） | linux6200/bge-reranker-v2-m3 |
+| 0.6B API 验证 | 英/中 embedding 200·dim1024·有限数值 PASS；长文本 8000字符/1779token PASS；相似度 A-B **0.845444** > A-C **0.354812** PASS |
+| 0.6B keep_alive | 缺省注入 `KEEP_ALIVE_INJECT POST /api/embed -> 0` 实证；runner **≤1s** 释放，`/api/ps` 清空 |
+| 0.6B 显存 | 基线 682 → 加载峰值 **6807 MiB**（模型进程 6120）→ 释放回落 **682** |
+| 调度回归 | embed → runner 自动释放 → Image 1024×1024 **200/59.3s**（steps24，峰值 17602 MiB），无手工清理 |
+| IMAGE :8011 | RUNNING，严格准入未动，unloaded/idle，queue1200 / GPU wait900 |
+| WEBUI :8020 | RUNNING（超时对齐版 1200s，dist 含 `12e5`；600 用例全绿） |
+| OOM（本轮） | NO（未做极限测试，仅真实读数） |
+| 本轮改动 | 仅新增 `reports/OLLAMA_QWEN3_EMBEDDING_06B.md` + 协调文件；**业务代码/配置零改动** |
 | Git | 见 LAST_HANDOFF |
 | Next Action | WAIT FOR COMMANDER REVIEW |
