@@ -1,100 +1,106 @@
 # Last Agent Handoff
 
 Updated At: 2026-09-28  
-Last Task ID: OLLAMA-ALL-MODELS-PRODUCTION-SMOKE-001  
+Last Task ID: LOCAL-MODEL-UNIFIED-DYNAMIC-SERVING-001  
 Status: COMPLETE — AWAITING COMMANDER REVIEW
 
-## Completed（本轮：全模型生产 smoke，只读验收）
+## Completed（本轮：11 个本地模型三级 Serving 统一接入）
 
-- **网络恢复**：本机曾切换到 `10.225.129.x` 网段导致到服务器（`10.16.15.x`）无路由、全端口超时约 1 小时；
-  恢复后 22/11434/8011 全通，任务按 §1 正常执行（未走 NETWORK_BLOCKED 分支）
-- **端口全符合预期**：11434 网关（0.0.0.0，python3 pid=3028816）/ 11435 仅回环 / 8010 / 8011 /
-  8020 / 3000 开 / **8000 CLOSED**
-- **模型清单 10 个**（`ollama list` 与 `/api/tags` 双读），名称与预期完全一致，零增删
-- **10/10 逐一实测，全部经 SERVER_IP:11434，严格串行**（每模型 `keep_alive=0` → `/api/ps` ≤1s 清空 → 下一个）：
-  - chat 6/6 **PASS**：qwen2.5-coder:7b/14b、qwen3:8b、qwen3-coder:30b、codellama:13b、deepseek-r1:7b
-    均 HTTP 200、可见输出、`done_reason=stop`；峰值 VRAM 7.4G/15.7G/11.6G/**44.0G**/21.0G/12.8G
-  - embedding 3/3 **PASS**：0.6b=**1024**、8b=**4096**、nomic=**768**，全部 finite
-  - reranker：**MODEL_PRESENT + STANDARD_RERANK_ENDPOINT_UNAVAILABLE**（`/api/rerank` 网关与 backend
-    均 `404 page not found`；网关日志的 `ok 0.00s` 只是透传成功，不是推理 PASS——任务书要求防误报）
-- **thinking 模型要点**：qwen3:8b 需请求体顶层 `"think": false` 才出字面 OK（`/no_think` 文本写法无效）；
-  deepseek-r1:7b thinking 不可关，`num_predict=512` 才完整输出（16/128 会停在思考中）
-- **调度零影响**：Image 全程 `state=idle` 队列全 0，网关无扣单，严格串行未破坏
-- **Qwen3.5-9B 只读**：`QWEN35_WEIGHT_PRESENT=YES`（`/data/vllm/Qwen3.5-9B` 19G、4 个 safetensors 分片；
-  config = `Qwen3_5ForConditionalGeneration`、`text_config` dtype **bfloat16**、num_hidden_layers **32**、
-  hidden_size **4096**、含 vision_config 多模态）；未部署、未转换、未启动
-- **vLLM**：8000 CLOSED，无 vllm 进程（tmux session `vllm` 存在但 pane=bash）；**不是当前 serving backend**
-- **Changes made: NONE**；报告 `reports/OLLAMA_ALL_MODELS_PRODUCTION_SMOKE.md`
+- **LEVEL 1（Ollama 本地导入）**：临时 Modelfile `FROM /data/vllm/<dir>`，tag 带 `-local`。
+  **成功 4**：`qwen3.5:9b-local`（caps completion+**vision**，真实图片实测准确描述）、
+  `gemma3:12b-it-local`（同，vision ✓）、`deepseek-coder:6.7b-instruct-local`（code smoke ✓）、
+  `codellama:7b-instruct-local`（code smoke ✓）。
+  **失败 5 进 LEVEL 2**：Qwen3-14B/Mistral/StarCoder2 = `unsupported architecture`；
+  gemma2 ×2 = Ollama daemon Go panic（`interface conversion: string→map`，systemd 3s 自恢复）。
+  **跳过 2**：CodeLlama-13B、Qwen2.5-Coder-7B = ALREADY_COVERED。
+  失败 create 无残留 tag；事后 `/api/tags`=14（原 10 完好 + 新 4）。
+- **关键运维事实**：`ollama create` 必须 `OLLAMA_HOST=127.0.0.1:11435`——默认打 11434 网关，
+  `/api/blobs` 上传会 `connection reset by peer`。
+- **LEVEL 2（GGUF + llama.cpp）**：llama.cpp `e85e15c` 的 `conversion/` 包支持全部 5 个目标架构。
+  转换用 `env/image` venv（torch2.14/tf5.17）+ 执行机下载 `sentencepiece` wheel scp 离线安装
+  （**服务器 PyPI 与国内镜像全超时**）。5×F16 → `llama-quantize Q4_K_M`：
+  qwen3-14b 9.0G / mistral 4.4G / gemma2-it 5.8G / gemma2 5.8G / starcoder2 4.5G，
+  落 `/data/vllm/ConvertedGGUF/<NAME>/`。**GGUF magic + file_type=15 + 张量数 + llama-cli 5/5 rc=0
+  全过**；验证后删 5 个 F16 中间文件回收 89G（§38 授权），原始 safetensors 抽查完好。
+  `/data/vllm/ConvertedGGUF` 需 sudo 创建（原目录 syy 无写权限）。
+- **泛化 Manager**：`services/llama-manager/llama_manager.py` + `configs/llama-manager/models.yaml`
+  （6 模型 registry，default=zrald-qwen3.8-27b，参数不散落代码）。
+  - 生命周期：admission（ollama ps >1G + nvidia >1G 双确认）→ flock gpu.lock → spawn :8012 → idle 600s SIGTERM
+  - **切换不释放租约**（stop A → spawn B 全程 lease_held=true，不给 Image 插入窗口）
+  - **推理中换模型 = QUEUE**（Condition 等待，实测 B 排 14.8s 后 200，A 未被 kill）
+  - 端点：/health、/manager/status（原 zrald 字段全保留+追加）、/v1/models、/v1/chat/completions
+  - **Zrald 向后兼容 PASS**：无 model 字段 → 回退 default zrald 200 `OK`；未知 model 名同回退
+- **统一调度（§21 竞态修复）**：网关新增 `LlamaGate`（轮询 `GATEWAY_LLAMA_STATUS` 默认
+  8010 `/manager/status` 的 `lease_held`）；GPU 完成类等待条件 = **Image busy ∨ llama lease_held**，
+  超时 1800s → 503（新增 `LLAMA_GPU_BUSY`）。三场景闭环实测全 PASS（详见报告 §8）。
+- **Level 3**：VLLM_DYNAMIC = **NOT_NEEDED**（无模型落在 Ollama∧llama.cpp 都不支持的区间），
+  未建 vllm-manager，`/home/yuyong/vllm/*.yaml` 只读未动，8000 保持 CLOSED。
+- **回归全过**：Image 1024×1024 200×2（84.9s/65.5s）；`qwen3:8b` 200 `OK`、`embed0.6b` 200 dim1024；
+  端点 8010/8011/8020/3000/11434 全 200；runner 每次 ≤1s 释放；GPU 峰值 33,469 MiB（<47,000 HIGH_VRAM 线）；
+  **本轮 CUDA OOM = 0**。
+- **磁盘**：可用 2.0T → 峰值 1.1T → 1.2T；ConvertedGGUF 117G → 28G（F16 清理后）。
+- 报告：`reports/LOCAL_MODEL_UNIFIED_DYNAMIC_SERVING.md`（17 节）
 
-## Previous Task: OLLAMA-QWEN3-EMBEDDING-06B-VERIFY-DEPLOY-001（要点保留）
+## Previous Tasks（要点保留）
 
-- `qwen3-embedding:0.6b` 为 **REUSED_EXISTING_MODEL**（Q8_0 / ctx32768 / dim1024 / 595.78M），
-  未 pull 未重复权重；语义表述 = Official Qwen3-Embedding-0.6B architecture/model family,
-  served via Ollama packaging（不作 bit-for-bit 主张）
-- keep_alive 缺省注入 `KEEP_ALIVE_INJECT POST /api/embed -> 0` 实证，runner ≤1s 释放
-- 报告 `reports/OLLAMA_QWEN3_EMBEDDING_06B.md`，commit `ddb62ff`
-
-## 更早任务要点（仍有效）
-
-- **Ollama 入口收口**：unit `OLLAMA_HOST=127.0.0.1:11435`，公网口 `serving/services/ollama/gateway.py`
-  占 `0.0.0.0:11434`；LAN 客户端零配置穿网关
-- **严格互斥**：Image admission = `/api/ps` runner 空 ∧ gpu.lock ∧ VRAM 预算+3072MiB；
-  网关 Image 占槽时扣完成类端点，image 仅资源等待时放行 `keep_alive=0`（BYPASS_RELEASE）
-- 队列：queue timeout 1200 ≥ GPU wait 900；TTL 1800/300；idle 600
-- 前端 Image 请求超时常量 `IMAGE_REQUEST_TIMEOUT_MS = 1_200_000`（600 用例全绿）
+- **OLLAMA-ALL-MODELS-PRODUCTION-SMOKE-001**：原 10 模型全 smoke PASS；reranker `/api/rerank`
+  404（MODEL_PRESENT + ENDPOINT_UNAVAILABLE）；网关日志 `ok` 只代表透传成功≠推理成功
+- **OLLAMA-QWEN3-EMBEDDING-06B**：0.6b = REUSED（Q8_0/32768/1024），keep_alive 注入实证
+- **IMAGE-WEBUI-TIMEOUT-ALIGN**：`IMAGE_REQUEST_TIMEOUT_MS = 1_200_000` 唯一常量，600 用例全绿
+- **GPU-SCHEDULER-STRICT**：Image admission = runner空 ∧ lock ∧ VRAM+3072；queue1200 ≥ wait900
 
 ## Status Flags
 
 | Flag | Value |
 |---|---|
-| NETWORK | PASS（曾断连约 1h，已恢复） |
-| OLLAMA MODELS | 10（6 chat / 3 embed / 1 reranker），与预期一致 |
-| CHAT / EMBED | 6/6 PASS、3/3 PASS（dim 1024·4096·768） |
-| RERANKER | MODEL_PRESENT + ENDPOINT_UNAVAILABLE（404） |
-| RUNNERS RELEASED | YES（全部 ≤1s，GPU 回落 682 MiB） |
-| GATEWAY PATH | PASS（全部 11434，11435 仅读 metadata） |
-| IMAGE | 全程 idle，严格串行未受影响 |
-| QWEN35_WEIGHT_PRESENT | YES（只读，19G） |
-| VLLM | STOPPED（8000 CLOSED） |
-| CUDA OOM（本轮） | NO |
-| CHANGES | NONE |
+| OLLAMA MODELS | 14（原 10 完好 + 4 `-local`） |
+| LEVEL 1 / 2 / 3 | 4 PASS / 5→GGUF PASS / NOT_NEEDED |
+| LLAMA MANAGER | :8010 registry 6 模型，spawn_count 验证，切换/排队 PASS |
+| GPU STRICT SERIAL | 三方互斥闭环实测 PASS（网关 LlamaGate 上线） |
+| ZRALD COMPAT | PASS（8010 原字段与行为全保留） |
+| IMAGE | 回归 PASS，调度未破坏 |
+| VLLM | 8000 CLOSED，原配置未动 |
+| CUDA OOM（本轮） | NO；峰值 33,469 MiB |
+| 原始权重 | PRESERVED（未删/未移/未覆盖；仅新增 ConvertedGGUF 与 Ollama blob） |
 | GIT | 见最终回复 |
 
 ## 服务终态
 
 | 端口 | 状态 |
 |---|---|
-| 8010 Zrald | RUNNING（未动） |
-| 8011 Image | RUNNING（idle，unloaded） |
+| 8010 | **llama-manager**（泛化 Zrald，registry 6 模型，default zrald，idle 600s） |
+| 8011 Image | RUNNING（严格准入未改） |
 | 8020 WebUI | RUNNING |
-| 11434 | 网关 → 127.0.0.1:11435 |
-| 11435 | Ollama backend（回环，10 模型完整） |
+| 11434 | 网关（**新代码：Image + LlamaGate 双条件**）→ 11435 |
+| 11435 | Ollama backend（回环，14 模型） |
 | 3000 OWUI | RUNNING |
 | 8000 vLLM | CLOSED |
-| GPU | 682 MiB / free 47,858（全模型释放后），gpu.lock FREE |
+| GPU | 682-9321 MiB（随当前占用），gpu.lock 空闲时 FREE |
 
 ## 环境要点（下轮必读）
 
-- **外部一律打 11434（网关）**；11435 只读 metadata；网关日志 `~/ai-serving/logs/ollama/gateway.log`
-  （`HELD` / `BYPASS_RELEASE` / `KEEP_ALIVE_INJECT`，含对端 IP；`ok` 只代表透传成功，不代表业务成功）
-- **释放模型用 API** `keep_alive:0`；`ollama stop` CLI 本服务器 404 空转，勿用
-- **reasoning 模型调用**：qwen3 用顶层 `think:false`（`/no_think` 文本无效）；deepseek-r1 给足
-  `num_predict`（512 可完整输出）
-- **本机网络**：Mac 曾在 `10.225.129.x` 网段时到服务器无路由 → 全端口超时；连不上先查
-  `netstat -rn` 有无到 `10.16.x` 的路由，别急着判服务挂了
-- **sudo 模式**：密码仅经当次 ssh heredoc **首行** stdin，永不落盘；`sudo -n` 无免密
-- **pkill/pgrep 自匹配**：同命令行含模式明文时括号技巧失效——取 PID 直杀，分三次 SSH
-- 服务器测试：Node 于 `env/node-v22.23.3-linux-x64/bin`；本机 rollup 坏，生成/测试在服务器跑；
-  本机 curl 加 `--noproxy '*'`；zsh 变量不自动分词
-- 真实 IP 永不入 Git（报告用 `SERVER_IP` / `CLIENT_IP_REDACTED`）
+- **网关等待条件已变**：Image busy **∨** llama-manager `lease_held`（8010）；`BYPASS_RELEASE`
+  只针对 Image 资源等待，llama busy 时全扣（含 release 请求）
+- **ollama create/show 必须 `OLLAMA_HOST=127.0.0.1:11435`**（网关不支持 blob 上传）
+- **服务器 PyPI 不通**（直连+国内镜像全超时）：Python 依赖从执行机下载 wheel scp + `pip --no-index`；
+  ML 转换用 `env/image` venv（已有 torch/tf/numpy + 本轮补的 sentencepiece）
+- **Ollama 0.20.7 内置转换器缺口**：Qwen3ForCausalLM / MistralForCausalLM / Starcoder2ForCausalLM
+  架构缺失；gemma2 导入触发 daemon panic（`interface conversion: string→map`，Restart=always 自愈）
+- **`/data/vllm/ConvertedGGUF` 权限**：新建子目录需 sudo（原目录属 root/vllm 组）
+- llamar-manager 请求 503 = admission 正确拒绝（GPU_BUSY：ollama runner 未释放 / 锁被占 /
+  nvidia >1G 进程），**等资源释放重试即可**，不是服务故障
+- llama-cli 非交互 smoke：`-st -m file -n 8 -p "..." --seed 42 < /dev/null`（`-no-cnv` 已不存在）
+- 历史沿用：sudo 密码仅当次 heredoc 首行；pkill 自匹配用 PID 直杀；curl `--noproxy '*'`；
+  Node 于 `env/node-v22.23.3-linux-x64/bin`；真实 IP 永不入 Git；`ollama stop` CLI 404 勿用
+- 释放 Ollama 模型用 API `keep_alive:0`；reasoning 模型用 `think:false`（qwen3 系）或足量 num_predict
 
 ## Exact Next Action
 
-WAIT FOR COMMANDER REVIEW
+WAIT FOR COMMANDER REVIEW（Git 分阶段提交见最终回复）
 
 ## Do Not
 
-- 未授权不动 Gateway/拓扑/Image/Zrald/gpu.lock/queue/CUDA/driver/Open WebUI/systemd
-- 不 `ollama pull` / `rm` / `create`，不转换 GGUF，不启动 vLLM，不处理 Qwen3.5-9B（需新授权）
-- 不为测试反复制造 CUDA OOM
-- 模型权重/blobs/logs/tmp/真实IP/secret 不入 Git；禁 git add -A
+- 未授权不动：原权重、`/home/yuyong/vllm`、systemd、Image 后端、CUDA/driver、网络、Open WebUI
+- 不 `ollama pull/rm/create`（新任务需授权）、不删原 10 模型、不删本轮 Q4
+- 网关 `LlamaGate` 与 llama-manager 是互斥闭环两侧，勿单独关闭
+- 测试图/tmp/logs/GGUF/blob/真实IP/secret 不入 Git；禁 git add -A

@@ -1,28 +1,27 @@
 # NEXT_ACTION
 
 Updated At: 2026-09-28  
-Task: OLLAMA-ALL-MODELS-PRODUCTION-SMOKE-001
+Task: LOCAL-MODEL-UNIFIED-DYNAMIC-SERVING-001
 
 Current Phase:
 
-OLLAMA ALL-MODELS PRODUCTION SMOKE COMPLETE — AWAITING COMMANDER REVIEW
+三级 Serving 策略落地完成 — AWAITING COMMANDER REVIEW
 
 Next Action:
 
-1. Git：禁用词/真实IP 扫描 → 白名单 add（reports/coordination）→ commit → push main
-2. （可选）reranker 业务接入：当前无 `/api/rerank` 端点，若业务需要重排，需 Commander 决策
-   （改 Gateway 或换调用方式均属新授权范围）
-3. （可选）Qwen3.5-9B 权重已在盘（19G HF safetensors），是否纳入 Ollama/vLLM 需 Commander 授权
-   （`ollama pull qwen3.5:9b` 或 GGUF 转换，均本轮禁止）
+1. Git：分阶段白名单提交
+   - `feat: generalize llama cpp model manager`（serving/services/llama-manager、serving/configs/llama-manager、serving/services/ollama/gateway.py）
+   - `docs: record local model serving matrix`（reports + coordination）→ push main
+2. （可选）LEVEL 3 预案：若未来出现仅 vLLM 可跑的模型，按报告 §7 设计建 `services/vllm-manager/`
+3. （可选）Ollama 上游 bug 反馈：gemma2 本地导入 panic（`interface conversion: string → map`）与 Qwen3/Mistral/Starcoder2 架构缺失
 4. （可选）恢复 vLLM（需授权）
-5. （可选）运维固化：chat reasoning 模型调用建议 `think:false`（qwen3）或足够 num_predict（deepseek-r1）
 
 Flags:
 
-- VLLM_RUNNING = NO（8000 CLOSED，非当前 serving backend）
-- OLLAMA_TOPOLOGY = gateway 0.0.0.0:11434 → backend 127.0.0.1:11435（未动）
-- OLLAMA_MODELS = 10（6 chat + 3 embed + 1 reranker，名称与预期一致）
-- RERANK_ENDPOINT = UNAVAILABLE（404，模型在库）
-- STRICT_EXCLUSION = 未受影响，Image 全程 idle
-- QWEN35_WEIGHT_PRESENT = YES（只读）
-- 禁止：未授权 pull/rm/create、改 Gateway/systemd/Image/Zrald/CUDA/driver、启动 vLLM、真实 IP 入 Git
+- VLLM_RUNNING = NO / VLLM_DYNAMIC = NOT_NEEDED
+- OLLAMA = 14 模型（原 10 完好 + 4 local），入口 :11434 网关（新增 LlamaGate）
+- LLAMA_MANAGER :8010 = registry 6 模型，default zrald，idle 600s，flock gpu.lock
+- GPU STRICT_SERIAL = Image ∧ Ollama ∧ llama.cpp 三方闭环实测 PASS
+- QWEN35 = Ollama registered（文本+视觉 PASS），原 19G 权重未动
+- 磁盘 = 可用 1.2T；ConvertedGGUF 28G（F16 已清）
+- 禁止：未授权删模型/改原权重/改 /home/yuyong/vllm/改 CUDA/driver/真实 IP 入 Git
