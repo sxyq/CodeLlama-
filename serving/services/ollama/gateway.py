@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import os
 import socket
+import subprocess
 import threading
 import time
 import urllib.request
@@ -130,15 +131,79 @@ class LlamaGate:
     The manager publishes lease_held on /manager/status; while it is true a
     llama-server (Zrald or any registry model) owns state/gpu.lock and may
     hold most of the VRAM, so completion-class Ollama requests must wait.
+
+    Fail-safe (task LLAMA-MANAGER-QUEUE-AND-CONCURRENCY-FIX-001 §15): when the
+    manager status endpoint is unreachable the gate must NOT blindly report
+    "free" (fail-open).  It falls back to (a) probing gpu.lock and (b)
+    scanning nvidia-smi for a llama-server compute process; either signal
+    counts as BUSY so a dying/unreachable manager can never open a window
+    for a concurrent Ollama load.
     """
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._busy = False
         self._reachable = False
+        self._fallback_active = False
         self._stop = threading.Event()
         t = threading.Thread(target=self._loop, daemon=True, name="gw-llama-gate")
         t.start()
+
+    # -- fail-safe helpers -------------------------------------------------
+    @staticmethod
+    def _gpu_lock_held() -> bool:
+        lock_path = os.environ.get("GPU_LOCK_PATH",
+                                   "/home/syy/ai-serving/state/gpu.lock")
+        try:
+            import fcntl
+            fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o664)
+        except Exception:
+            return False
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except (BlockingIOError, OSError):
+            os.close(fd)
+            return True            # someone holds it -> busy
+        try:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        except Exception:
+            pass
+        os.close(fd)
+        return False
+
+    @staticmethod
+    def _llama_server_on_gpu() -> bool:
+        try:
+            out = subprocess.run(
+                ["nvidia-smi", "--query-compute-apps=pid,used_memory",
+                 "--format=csv,noheader,nounits"],
+                capture_output=True, text=True, timeout=4).stdout
+        except Exception:
+            return False
+        for line in out.strip().splitlines():
+            parts = [p.strip() for p in line.split(",")]
+            if len(parts) < 2:
+                continue
+            try:
+                pid, mem = int(parts[0]), int(parts[1])
+            except ValueError:
+                continue
+            if mem <= 1024:
+                continue
+            try:
+                with open(f"/proc/{pid}/cmdline", "rb") as f:
+                    cmd = f.read().replace(b"\x00", b" ").decode(errors="replace")
+            except Exception:
+                continue
+            fields = cmd.split()
+            if fields and os.path.basename(fields[0]) == "llama-server":
+                return True
+        return False
+
+    def _fallback_busy(self) -> bool:
+        if self._gpu_lock_held():
+            return True
+        return self._llama_server_on_gpu()
 
     def _loop(self) -> None:
         while not self._stop.is_set():
@@ -147,12 +212,21 @@ class LlamaGate:
                     st = json.load(r)
                 busy = bool(st.get("lease_held"))
                 with self._lock:
+                    if self._fallback_active:
+                        print("[gw] llama status recovered -> direct lease_held",
+                              flush=True)
                     self._busy = busy
                     self._reachable = True
+                    self._fallback_active = False
             except Exception:
-                # manager down/absent -> slot free (Zrald manager not running)
+                # manager unreachable -> fail-safe: probe lock + GPU process
+                busy = self._fallback_busy()
                 with self._lock:
-                    self._busy = False
+                    if not self._fallback_active:
+                        print(f"[gw] llama status unreachable -> fail-safe busy={busy}",
+                              flush=True)
+                        self._fallback_active = True
+                    self._busy = busy
                     self._reachable = False
             self._stop.wait(LLAMA_POLL_S)
 
