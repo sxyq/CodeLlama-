@@ -1,12 +1,12 @@
 # PROJECT_STATE
 
-更新时间：2026-09-27  
-Task: OLLAMA-QWEN3-EMBEDDING-06B-VERIFY-DEPLOY-001
+更新时间：2026-09-28  
+Task: OLLAMA-ALL-MODELS-PRODUCTION-SMOKE-001
 
 | 项 | 值 |
 |---|---|
 | Experiment ID | DEFAULT-LORA-001 |
-| 当前阶段 | OLLAMA QWEN3-EMBEDDING-0.6B VERIFY COMPLETE（待 Commander 审阅） |
+| 当前阶段 | **NETWORK_BLOCKED**（全模型生产冒烟未执行，任务书 §1 STOP） |
 | VLLM_RUNNING | NO（8000 CLOSED） |
 | ZRALD :8010 | RUNNING（flock 互斥未动） |
 | OLLAMA | backend **127.0.0.1:11435**（回环，unit 未动）；公网口网关 **0.0.0.0:11434**（pid=3028816，逻辑未动）；**10 模型完整，本轮零增删** |
@@ -20,6 +20,8 @@ Task: OLLAMA-QWEN3-EMBEDDING-06B-VERIFY-DEPLOY-001
 | IMAGE :8011 | RUNNING，严格准入未动，unloaded/idle，queue1200 / GPU wait900 |
 | WEBUI :8020 | RUNNING（超时对齐版 1200s，dist 含 `12e5`；600 用例全绿） |
 | OOM（本轮） | NO（未做极限测试，仅真实读数） |
-| 本轮改动 | 仅新增 `reports/OLLAMA_QWEN3_EMBEDDING_06B.md` + 协调文件；**业务代码/配置零改动** |
+| 上轮改动 | `reports/OLLAMA_QWEN3_EMBEDDING_06B.md`（0.6B 复用核验，已完成） |
+| 本轮改动 | 仅新增 `reports/OLLAMA_ALL_MODELS_PRODUCTION_SMOKE.md`（NETWORK_BLOCKED）+ 协调文件；**服务端零操作** |
+| 网络 | 执行机已切到 10.225.129.0/24，**无到 10.16.15.x 的路由**；22/11434/8011 连续多轮超时 |
 | Git | 见 LAST_HANDOFF |
-| Next Action | WAIT FOR COMMANDER REVIEW |
+| Next Action | 恢复执行机到 SERVER_IP 网段的网络后，按任务书从 §1 重新执行 OLLAMA-ALL-MODELS-PRODUCTION-SMOKE-001 |

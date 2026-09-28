@@ -1,17 +1,18 @@
 # NEXT_ACTION
 
-Updated At: 2026-09-27  
-Task: OLLAMA-QWEN3-EMBEDDING-06B-VERIFY-DEPLOY-001
+Updated At: 2026-09-28  
+Task: OLLAMA-ALL-MODELS-PRODUCTION-SMOKE-001
 
 Current Phase:
 
-OLLAMA QWEN3-EMBEDDING-0.6B VERIFY COMPLETE — AWAITING COMMANDER REVIEW
+NETWORK_BLOCKED — 冒烟测试未执行（服务器不可达，任务书 §1 STOP）
 
 Next Action:
 
-1. Git：secret/禁用词/真实IP 扫描 → 白名单 add（reports/coordination）→ commit → push main
-2. （可选）运维手册固化：0.6B embedding 默认即释放，业务无需显式 keep_alive；如需驻留须显式传值
-3. （可选）WebUI/Open WebUI 侧按业务选择 embedding 模型（0.6b 轻量 / 8b 强表征），互不覆盖
+1. 恢复执行机网络（回到可路由到 SERVER_IP 的内网/VPN）→ 从任务书 §1 重跑可达性探测
+2. 可达后执行 OLLAMA-ALL-MODELS-PRODUCTION-SMOKE-001 全流程（端口/清单/6 chat/3 embedding/reranker/
+   串行释放/显存/gateway log/Qwen3.5-9B 只读/vLLM 只读），结果写入同一份报告
+3. （可选）运维手册固化：0.6B embedding 默认即释放，业务无需显式 keep_alive；如需驻留须显式传值
 4. （可选）恢复 vLLM（需 Commander 授权）
 
 Flags:
@@ -23,4 +24,5 @@ Flags:
 - KEEP_ALIVE_DEFAULT = 0（网关注入），runner ≤1s 释放
 - STRICT_EXCLUSION（Image↔Ollama 互斥）= 未改，回归 PASS
 - CUDA_OOM（本轮）= NO
-- 禁止：未授权改 Gateway/拓扑/Image/Zrald/gpu.lock/queue/CUDA/driver/Open WebUI、删改已有模型、真实 IP 入 Git
+- 本轮（冒烟）禁止：pull/rm/create/下载/转换、启动 vLLM、改 Gateway/systemd/Image/Zrald/CUDA/driver、真实 IP 入 Git
+- 禁止：未授权改 Gateway/拓扑/Image/Zrald/gpu.lock/queue/CUDA/driver/Open WebUI、删改已有模型
