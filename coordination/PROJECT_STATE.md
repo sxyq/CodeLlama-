@@ -1,27 +1,27 @@
 # PROJECT_STATE
 
 更新时间：2026-09-28  
-Task: LOCAL-MODEL-UNIFIED-DYNAMIC-SERVING-001
+Task: LLAMA-MANAGER-QUEUE-AND-CONCURRENCY-FIX-001
 
 | 项 | 值 |
 |---|---|
 | Experiment ID | DEFAULT-LORA-001 |
-| 当前阶段 | 三级 Serving 策略落地完成（待 Commander 审阅） |
-| VLLM_RUNNING | NO（8000 CLOSED；**VLLM_DYNAMIC = NOT_NEEDED**，无模型需要 vLLM） |
-| ZRALD :8010 | **泛化为通用 llama.cpp Model Manager**（原 zrald_lease_manager.py 单模型 → registry 驱动），8010 API 向后兼容全过 |
-| OLLAMA | :11434 网关 → 127.0.0.1:11435；**14 模型** = 原 10（完好）+ 新 4 local |
-| OLLAMA 新增 | `qwen3.5:9b-local`（completion+vision，图片实测准确）、`gemma3:12b-it-local`（同）、`deepseek-coder:6.7b-instruct-local`（code smoke ✓）、`codellama:7b-instruct-local`（code smoke ✓） |
-| OLLAMA 导入失败 | Qwen3-14B / Mistral / StarCoder2（`unsupported architecture`）+ gemma2 ×2（daemon Go panic，systemd 自恢复）→ 全部转 LEVEL 2 |
-| LLAMA.CPP 动态 | `~/ai-serving/services/llama-manager/llama_manager.py` + `configs/llama-manager/models.yaml`（6 模型：zrald default + qwen3-14b / mistral-7b / gemma2-9b-it / gemma2-9b / starcoder2） |
-| GGUF 转换 | 5×Q4_K_M 落 `/data/vllm/ConvertedGGUF/`（共 28G）；F16 中间文件已清理（回收 89G）；llama-cli 5/5 PASS |
-| 转换环境 | `env/image` venv（torch2.14/tf5.17）+ 离线 wheel 装 sentencepiece；**未动全局 Python/CUDA/driver**；服务器 PyPI 直连不通（执行机下载 wheel scp 安装） |
-| 统一 GPU 调度 | 网关新增 `LlamaGate`（`GATEWAY_LLAMA_STATUS` → 8010 `lease_held`）；等待条件 = Image busy ∨ llama lease |
-| 互斥闭环实测 | A：llama 持锁→网关扣 embed 12s→释放自动 200；B：llama 持锁→Image `waiting_for_gpu`→释放→自动 200/84.9s；C：Image 运行→llama 503 GPU_BUSY + embed 扣 63.8s→完成自动 200 |
-| 模型切换 | switch_count 实测；A 长任务推理中 B 请求**排队 14.8s 后 200**（不 kill 在跑任务）；租约跨切换保持 |
-| 回归 | Image 1024×1024 200×2；Ollama `qwen3:8b`+`embed0.6b` 200；Zrald 兼容（无 model 字段/未知 model 回退 default）；8010/8011/8020/3000/11434 端点全 200 |
-| Qwen3.5-9B | 权重保留原位（19G safetensors 未动）+ Ollama `qwen3.5:9b-local` 全能力（文本+视觉） |
-| 磁盘 | 开始可用 2.0T → 峰值 1.1T → 当前 1.2T（红线 500GB 全程未触） |
-| OOM | 本轮 0 次；峰值 VRAM 33,469 MiB < 47,000 HIGH_VRAM 线 |
-| 本轮改动 | serving/（llama-manager 新增 + 网关 LlamaGate）+ reports/ + coordination/；**原权重、/home/yuyong/vllm、systemd、Image、Zrald 源码均未改** |
+| 当前阶段 | llama-manager 排队与并发修复完成（待 Commander 审阅） |
+| VLLM_RUNNING | NO（8000 CLOSED，本轮未动） |
+| LLAMA MANAGER :8010 | RUNNING（新代码）：**GPU 等待 900s/3s 轮询** 替代 503 快速失败；单一 Condition + **原子 inflight 预留**；状态机 QUEUED→WAITING_FOR_GPU→LOADING→RUNNING→IDLE→UNLOADED |
+| /status 新字段 | state / waiting_for_gpu / blocked_by（ollama·image·gpu_lock·gpu_memory·none，无 PID/IP）；原 zrald 字段全保留 |
+| 等待条件 | gpu.lock 被占 / Ollama runner >1GB / nvidia 其他 >1GB；排队期不持锁，切换期租约跨切换保持 |
+| Race 修复 | selection + 切换判定 + inflight++ 同一临界区；transition 标志保证同时仅一个准备者 |
+| 测试 | 代码测试 **7/7 PASS**（含 deterministic race：order=[A_reserved,A_done,B_reserved,B_done]） |
+| E2E | **34/34 PASS**：A=Image→llama 等待 662.7s 自动 200；B=Ollama→llama blocked=ollama→14.6s 自动 200；C=A/B 各自 model 字段正确 |
+| §20 六方向 | 全 PASS（含补测 llama→Image 74.7s、Image→Ollama 61.7s、llama→Ollama 15.8s） |
+| Gateway fail-safe | status 不可达 → 回退 gpu.lock 探测 + nvidia llama-server 进程，任一命中即 BUSY（消除 fail-open） |
+| Orphan 保护 | 实测：人为造 orphan → 识别归属 → graceful terminate → VRAM 释放 → orphan=resolved；不可判定则拒载 |
+| Zrald 兼容 | PASS（无 model/未知 model → default zrald 200；/health /manager/status 原字段未删） |
+| 回归 | qwen3-14b/mistral/zrald、qwen3:8b、embed0.6b、Image 1024×1024 多轮 200；Ollama 14 模型完好 |
+| 超时核对 | llama GPU wait 900（新）/ 切换队列 900 / Gateway 1800 / Image 900·1200 —— 后三者未改 |
+| 终态 | 8010/8011/8020/11434/11435/3000 OPEN、8000 CLOSED、**无孤儿**、gpu.lock **FREE**、ps empty、GPU **682 MiB** |
+| OOM | 本轮 0 次 |
+| 本轮改动 | 仅 llama-manager（2 文件）+ gateway + reports + coordination |
 | Git | 见 LAST_HANDOFF |
 | Next Action | WAIT FOR COMMANDER REVIEW |
