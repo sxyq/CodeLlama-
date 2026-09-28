@@ -1,0 +1,44 @@
+# General llama.cpp model manager registry
+# Consumed by services/llama-manager/llama_manager.py
+# Paths are real server paths (weights stay in /data/vllm, never copied).
+
+default_model: zrald-qwen3.8-27b
+backend_port: 8012
+idle_timeout: 600
+
+models:
+  zrald-qwen3.8-27b:
+    path: /data/vllm/Zrald-Qwen3.8-27B-v2/zraldqwen3.8-accuracy.gguf
+    context: 32768
+    alias: zrald-qwen3.8-27b-accuracy
+    gpu_layers: 999
+
+  qwen3-14b-local:
+    path: /data/vllm/ConvertedGGUF/Qwen3-14B/qwen3-14b-Q4_K_M.gguf
+    context: 40960
+    alias: qwen3-14b-local
+    gpu_layers: 999
+
+  mistral-7b-instruct-v0.2-local:
+    path: /data/vllm/ConvertedGGUF/Mistral-7B-Instruct-v0.2/mistral-7b-instruct-v0.2-Q4_K_M.gguf
+    context: 32768
+    alias: mistral-7b-instruct-v0.2-local
+    gpu_layers: 999
+
+  gemma2-9b-it-local:
+    path: /data/vllm/ConvertedGGUF/gemma-2-9b-it/gemma2-9b-it-Q4_K_M.gguf
+    context: 8192
+    alias: gemma2-9b-it-local
+    gpu_layers: 999
+
+  gemma2-9b-local:
+    path: /data/vllm/ConvertedGGUF/gemma-2-9b/gemma-2-9b-Q4_K_M.gguf
+    context: 8192
+    alias: gemma2-9b-local
+    gpu_layers: 999
+
+  starcoder2-7b-local:
+    path: /data/vllm/ConvertedGGUF/starcoder2-7b/starcoder2-7b-Q4_K_M.gguf
+    context: 16384
+    alias: starcoder2-7b-local
+    gpu_layers: 999

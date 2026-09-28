@@ -32,6 +32,10 @@ BACKEND_PORT = int(os.environ.get("GATEWAY_BACKEND_PORT", "11435"))
 IMAGE_STATUS = os.environ.get("GATEWAY_IMAGE_STATUS", "http://127.0.0.1:8011/status")
 IMAGE_WAIT_TIMEOUT = int(os.environ.get("GATEWAY_IMAGE_WAIT_TIMEOUT", "1800"))
 IMAGE_POLL_S = float(os.environ.get("GATEWAY_IMAGE_POLL", "2"))
+# general llama.cpp model manager (generalized Zrald :8010) — its lease_held
+# flag tells us a llama.cpp backend occupies the unified GPU slot
+LLAMA_STATUS = os.environ.get("GATEWAY_LLAMA_STATUS", "http://127.0.0.1:8010/manager/status")
+LLAMA_POLL_S = float(os.environ.get("GATEWAY_LLAMA_POLL", "2"))
 # injected default for embed-family when the client omitted keep_alive
 EMBED_KEEP_ALIVE = os.environ.get("GATEWAY_EMBED_KEEP_ALIVE", "0")
 MAX_HEAD = 64 * 1024
@@ -118,6 +122,58 @@ class ImageGate:
             ever_waited = True
             time.sleep(IMAGE_POLL_S)
         raise TimeoutError(f"image slot still busy after {timeout_s}s")
+
+
+class LlamaGate:
+    """Tracks whether the general llama.cpp manager occupies the GPU slot.
+
+    The manager publishes lease_held on /manager/status; while it is true a
+    llama-server (Zrald or any registry model) owns state/gpu.lock and may
+    hold most of the VRAM, so completion-class Ollama requests must wait.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._busy = False
+        self._reachable = False
+        self._stop = threading.Event()
+        t = threading.Thread(target=self._loop, daemon=True, name="gw-llama-gate")
+        t.start()
+
+    def _loop(self) -> None:
+        while not self._stop.is_set():
+            try:
+                with urllib.request.urlopen(LLAMA_STATUS, timeout=3) as r:
+                    st = json.load(r)
+                busy = bool(st.get("lease_held"))
+                with self._lock:
+                    self._busy = busy
+                    self._reachable = True
+            except Exception:
+                # manager down/absent -> slot free (Zrald manager not running)
+                with self._lock:
+                    self._busy = False
+                    self._reachable = False
+            self._stop.wait(LLAMA_POLL_S)
+
+    def llama_busy(self) -> bool:
+        with self._lock:
+            return self._busy
+
+    def wait_llama_idle(self, timeout_s: int) -> float:
+        t0 = time.time()
+        ever_waited = False
+        while time.time() - t0 < timeout_s:
+            if not self.llama_busy():
+                if not ever_waited:
+                    return 0.0
+                time.sleep(LLAMA_POLL_S)
+                if not self.llama_busy():
+                    return time.time() - t0
+                continue
+            ever_waited = True
+            time.sleep(LLAMA_POLL_S)
+        raise TimeoutError(f"llama.cpp slot still busy after {timeout_s}s")
 
 
 def read_head(conn: socket.socket) -> bytes:
@@ -251,7 +307,8 @@ def error_response(client: socket.socket, status: str, code: str, message: str) 
         pass
 
 
-def handle_client(client: socket.socket, addr, gate: ImageGate) -> None:
+def handle_client(client: socket.socket, addr, gate: ImageGate,
+                  llama_gate: LlamaGate) -> None:
     key = "?"
     t0 = time.time()
     try:
@@ -279,9 +336,17 @@ def handle_client(client: socket.socket, addr, gate: ImageGate) -> None:
                     error_response(client, "503 Service Unavailable", "IMAGE_GPU_BUSY",
                                    f"image workload still running after {IMAGE_WAIT_TIMEOUT}s")
                     return
+                try:
+                    waited += llama_gate.wait_llama_idle(IMAGE_WAIT_TIMEOUT)
+                except TimeoutError:
+                    print(f"[gw] {time.strftime('%T')} HOLD_TIMEOUT {key} "
+                          f"llama.cpp slot busy after {IMAGE_WAIT_TIMEOUT}s", flush=True)
+                    error_response(client, "503 Service Unavailable", "LLAMA_GPU_BUSY",
+                                   f"llama.cpp workload still running after {IMAGE_WAIT_TIMEOUT}s")
+                    return
                 if waited >= IMAGE_POLL_S * 2:
                     print(f"[gw] {time.strftime('%T')} HELD {key} {waited:.1f}s "
-                          f"(image slot busy)", flush=True)
+                          f"(image/llama slot busy)", flush=True)
         if key.split(" ", 1)[1] in EMBED_PATHS:
             new_body = inject_keep_alive(body)
             if new_body is not body:
@@ -314,19 +379,20 @@ def handle_client(client: socket.socket, addr, gate: ImageGate) -> None:
 
 def main() -> None:
     gate = ImageGate()
+    llama_gate = LlamaGate()
     srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     srv.bind((LISTEN_HOST, LISTEN_PORT))
     srv.listen(128)
     print(f"[gw] listening on {LISTEN_HOST}:{LISTEN_PORT} -> "
-          f"{BACKEND_HOST}:{BACKEND_PORT} (image status: {IMAGE_STATUS})",
-          flush=True)
+          f"{BACKEND_HOST}:{BACKEND_PORT} (image status: {IMAGE_STATUS}, "
+          f"llama status: {LLAMA_STATUS})", flush=True)
     while True:
         try:
             conn, addr = srv.accept()
         except KeyboardInterrupt:
             break
-        threading.Thread(target=handle_client, args=(conn, addr, gate),
+        threading.Thread(target=handle_client, args=(conn, addr, gate, llama_gate),
                          daemon=True).start()
 
 
