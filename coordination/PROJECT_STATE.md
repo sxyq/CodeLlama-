@@ -6,22 +6,18 @@ Task: OLLAMA-ALL-MODELS-PRODUCTION-SMOKE-001
 | 项 | 值 |
 |---|---|
 | Experiment ID | DEFAULT-LORA-001 |
-| 当前阶段 | **NETWORK_BLOCKED**（全模型生产冒烟未执行，任务书 §1 STOP） |
-| VLLM_RUNNING | NO（8000 CLOSED） |
-| ZRALD :8010 | RUNNING（flock 互斥未动） |
-| OLLAMA | backend **127.0.0.1:11435**（回环，unit 未动）；公网口网关 **0.0.0.0:11434**（pid=3028816，逻辑未动）；**10 模型完整，本轮零增删** |
-| OLLAMA 模型（Embedding） | `qwen3-embedding:0.6b`（**REUSED_EXISTING_MODEL**：qwen3 / 595.78M / **Q8_0** / ctx **32768** / dim **1024** / capabilities=embedding）、`qwen3-embedding:8b`（PRESERVED）、`nomic-embed-text` |
-| OLLAMA 模型（Chat/Gen） | qwen2.5-coder:7b-instruct、qwen2.5-coder:14b-instruct、qwen3:8b、qwen3-coder:30b、codellama:13b-instruct、deepseek-r1:7b |
-| OLLAMA 模型（Reranker） | linux6200/bge-reranker-v2-m3 |
-| 0.6B API 验证 | 英/中 embedding 200·dim1024·有限数值 PASS；长文本 8000字符/1779token PASS；相似度 A-B **0.845444** > A-C **0.354812** PASS |
-| 0.6B keep_alive | 缺省注入 `KEEP_ALIVE_INJECT POST /api/embed -> 0` 实证；runner **≤1s** 释放，`/api/ps` 清空 |
-| 0.6B 显存 | 基线 682 → 加载峰值 **6807 MiB**（模型进程 6120）→ 释放回落 **682** |
-| 调度回归 | embed → runner 自动释放 → Image 1024×1024 **200/59.3s**（steps24，峰值 17602 MiB），无手工清理 |
-| IMAGE :8011 | RUNNING，严格准入未动，unloaded/idle，queue1200 / GPU wait900 |
-| WEBUI :8020 | RUNNING（超时对齐版 1200s，dist 含 `12e5`；600 用例全绿） |
-| OOM（本轮） | NO（未做极限测试，仅真实读数） |
-| 上轮改动 | `reports/OLLAMA_QWEN3_EMBEDDING_06B.md`（0.6B 复用核验，已完成） |
-| 本轮改动 | 仅新增 `reports/OLLAMA_ALL_MODELS_PRODUCTION_SMOKE.md`（NETWORK_BLOCKED）+ 协调文件；**服务端零操作** |
-| 网络 | 执行机已切到 10.225.129.0/24，**无到 10.16.15.x 的路由**；22/11434/8011 连续多轮超时 |
+| 当前阶段 | OLLAMA 全模型生产 smoke COMPLETE（待 Commander 审阅） |
+| VLLM_RUNNING | NO（8000 CLOSED，无 vllm 进程；tmux session `vllm` 内 pane=bash） |
+| ZRALD :8010 | RUNNING（未动） |
+| OLLAMA | backend 127.0.0.1:11435（回环）；网关 0.0.0.0:11434（pid=3028816）；**10 模型，零增删** |
+| 全模型 smoke | **10/10 逐一实测**：chat 6/6 PASS（200+可见输出）、embed 3/3 PASS（dim 1024/4096/768 有限数值）、reranker 模型在但 `/api/rerank` 网关+backend 均 **404 → ENDPOINT_UNAVAILABLE** |
+| 串行与释放 | 每模型 `keep_alive=0` → `/api/ps` ≤1s 清空 → GPU 回落 682 MiB 基线；无并发加载 |
+| Gateway path | 全部业务请求经 SERVER_IP:11434，gateway.log 可见；11435 只读 metadata |
+| Image :8011 | 全程 `state=idle`，队列全 0，严格串行调度未受影响 |
+| Qwen3.5-9B | `QWEN35_WEIGHT_PRESENT=YES`（`/data/vllm/Qwen3.5-9B` 19G/4 分片；config: Qwen3_5ForConditionalGeneration、bf16、32 层、hidden 4096、带 vision_config）——只读，未部署未转换 |
+| Chat thinking | qwen3:8b 用请求体 `think:false` 得字面 OK；deepseek-r1:7b 需 `num_predict=512` 才出可见回答（thinking 不可关） |
+| 端口 | 11434 网关 / 11435 仅回环 / 8010 / 8011 / 8020 / 3000 开 / 8000 CLOSED |
+| 网络 | 恢复（22/11434/8011 全通；本机曾因切换到 10.225.129.x 网段断连约 1 小时） |
+| 本轮改动 | 仅 `reports/OLLAMA_ALL_MODELS_PRODUCTION_SMOKE.md` + 协调文件；**服务端零改动** |
 | Git | 见 LAST_HANDOFF |
-| Next Action | 恢复执行机到 SERVER_IP 网段的网络后，按任务书从 §1 重新执行 OLLAMA-ALL-MODELS-PRODUCTION-SMOKE-001 |
+| Next Action | WAIT FOR COMMANDER REVIEW |
